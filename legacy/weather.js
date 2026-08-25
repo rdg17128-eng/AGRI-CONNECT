@@ -1,5 +1,15 @@
 // Weather fetching logic using the provided API key
-const API_KEY = "AIzaSyBB3wNiPDlsm2-_fpC6ou95q-KWvB1o-QM";
+let API_KEY = "";
+
+try {
+    const config = await import("./config.js");
+    if (config.openWeatherMapApiKey) {
+        API_KEY = config.openWeatherMapApiKey;
+    }
+} catch (error) {
+    console.warn("Local config.js not found. Using default placeholders.");
+}
+
 const CITY = "Hyderabad";
 
 // Function mapping weather conditions to FontAwesome icons

@@ -3,7 +3,7 @@ import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyAU3vmUdzFDzseI3oT5JQy0jDdIxkmdVso",
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
     authDomain: "green-grid-b2222.firebaseapp.com",
     projectId: "green-grid-b2222",
     storageBucket: "green-grid-b2222.firebasestorage.app",

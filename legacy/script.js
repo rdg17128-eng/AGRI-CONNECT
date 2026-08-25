@@ -5,7 +5,7 @@ import { fetchWeatherByCoords } from "./weather.js";
 
 // Firebase configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyAU3vmUdzFDzseI3oT5JQy0jDdIxkmdVso",
+    apiKey: "",
     authDomain: "green-grid-b2222.firebaseapp.com",
     projectId: "green-grid-b2222",
     storageBucket: "green-grid-b2222.firebasestorage.app",
@@ -13,6 +13,15 @@ const firebaseConfig = {
     appId: "1:367679697189:web:ef5ad8ebe8f02df185eacc",
     measurementId: "G-0R0BCB59E3"
 };
+
+try {
+    const config = await import("./config.js");
+    if (config.firebaseConfig && config.firebaseConfig.apiKey) {
+        firebaseConfig.apiKey = config.firebaseConfig.apiKey;
+    }
+} catch (error) {
+    console.warn("Local config.js not found. Using default placeholders.");
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

@@ -25,6 +25,7 @@ build/
 .env
 .env*.local
 *.local
+legacy/config.js
 
 # Editor directories and files
 .vscode/
