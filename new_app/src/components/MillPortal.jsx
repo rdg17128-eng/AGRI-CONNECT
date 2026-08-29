@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabase';
 
 export default function MillPortal({ user, onLogout }) {
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTabState] = useState(() => {
+        return localStorage.getItem('agri_active_tab') || 'dashboard';
+    });
+    const setActiveTab = (tab) => {
+        localStorage.setItem('agri_active_tab', tab);
+        setActiveTabState(tab);
+    };
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
 

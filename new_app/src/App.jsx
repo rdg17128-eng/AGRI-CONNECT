@@ -7,15 +7,31 @@ import ConsumerPortal from './components/ConsumerPortal';
 import './index.css'; // Make sure the old styling applies
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [portal, setPortal] = useState(null); // e.g. 'farmers', 'buyers', etc.
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('agri_user');
+    try {
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch (e) {
+      console.error("Error parsing saved user session:", e);
+      return null;
+    }
+  });
+  const [portal, setPortal] = useState(() => {
+    return localStorage.getItem('agri_portal') || null;
+  });
 
   const handleLogin = (userData, selectedPortal) => {
+    localStorage.setItem('agri_user', JSON.stringify(userData));
+    localStorage.setItem('agri_portal', selectedPortal);
+    localStorage.setItem('agri_active_tab', 'dashboard');
     setUser(userData);
     setPortal(selectedPortal);
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('agri_user');
+    localStorage.removeItem('agri_portal');
+    localStorage.removeItem('agri_active_tab');
     setUser(null);
     setPortal(null);
   };

@@ -4,7 +4,13 @@ import AddMillModal from './AddMillModal';
 import UpdatePricesModal from './UpdatePricesModal';
 
 export default function BuyerPortal({ user, onLogout }) {
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTabState] = useState(() => {
+        return localStorage.getItem('agri_active_tab') || 'dashboard';
+    });
+    const setActiveTab = (tab) => {
+        localStorage.setItem('agri_active_tab', tab);
+        setActiveTabState(tab);
+    };
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -112,7 +118,11 @@ export default function BuyerPortal({ user, onLogout }) {
 
     const handleAcceptEnquiry = async (enquiryId) => {
         if (!window.confirm('Do you want to accept this order and securely share your accurate mill location with the farmer for logistics?')) return;
+        const targetEnquiry = enquiries.find(e => e.id === enquiryId);
+        if (!targetEnquiry) return;
+
         try {
+            // Update this enquiry to accepted
             const { error } = await supabase
                 .from('enquiries')
                 .update({ status: 'accepted', updated_at: new Date().toISOString() })
@@ -120,7 +130,32 @@ export default function BuyerPortal({ user, onLogout }) {
 
             if (error) throw error;
 
-            setEnquiries(prev => prev.map(enq => enq.id === enquiryId ? { ...enq, status: 'accepted' } : enq));
+            // Automatically decline any other pending enquiries from the same farmer for the same crop
+            try {
+                await supabase
+                    .from('enquiries')
+                    .update({ status: 'declined', updated_at: new Date().toISOString() })
+                    .eq('buyer_phone', user.phone)
+                    .eq('farmer_phone', targetEnquiry.farmerPhone)
+                    .eq('crop_name', targetEnquiry.cropName)
+                    .eq('status', 'pending');
+            } catch (err) {
+                console.error('Error auto-declining duplicates:', err);
+            }
+
+            setEnquiries(prev => prev.map(enq => {
+                if (enq.id === enquiryId) {
+                    return { ...enq, status: 'accepted' };
+                } else if (
+                    enq.farmerPhone === targetEnquiry.farmerPhone &&
+                    enq.cropName === targetEnquiry.cropName &&
+                    enq.status === 'pending'
+                ) {
+                    return { ...enq, status: 'declined' };
+                }
+                return enq;
+            }));
+
             alert('Enquiry accepted successfully! The farmer has been notified.');
         } catch (error) {
             console.error('Error accepting enquiry:', error);
@@ -529,6 +564,8 @@ export default function BuyerPortal({ user, onLogout }) {
                                                     <td style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
                                                         {enq.status === 'accepted' ? (
                                                             <span style={{ color: 'var(--success)', fontWeight: 600 }}><i className="fa-solid fa-check"></i> Purchased</span>
+                                                        ) : enq.status === 'declined' ? (
+                                                            <span style={{ color: 'var(--danger)', fontWeight: 600 }}><i className="fa-solid fa-xmark"></i> Declined</span>
                                                         ) : (
                                                             <button
                                                                 className="primary-btn"

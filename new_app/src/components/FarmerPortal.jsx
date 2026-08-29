@@ -15,7 +15,13 @@ L.Icon.Default.mergeOptions({
 });
 
 export default function FarmerPortal({ user, onLogout }) {
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTabState] = useState(() => {
+        return localStorage.getItem('agri_active_tab') || 'dashboard';
+    });
+    const setActiveTab = (tab) => {
+        localStorage.setItem('agri_active_tab', tab);
+        setActiveTabState(tab);
+    };
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [isAddCropOpen, setIsAddCropOpen] = useState(false);

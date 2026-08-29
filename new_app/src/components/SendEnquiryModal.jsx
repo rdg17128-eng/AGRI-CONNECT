@@ -16,6 +16,23 @@ export default function SendEnquiryModal({ onClose, mill, crop, user }) {
 
         setIsSubmitting(true);
         try {
+            // Check for existing pending enquiry from this farmer for the same crop to this mill
+            const { data: existingEnquiries, error: checkError } = await supabase
+                .from('enquiries')
+                .select('id')
+                .eq('farmer_phone', user.phone)
+                .eq('mill_id', mill.id)
+                .eq('crop_name', crop?.cropName || 'Unknown Crop')
+                .eq('status', 'pending');
+
+            if (checkError) throw checkError;
+
+            if (existingEnquiries && existingEnquiries.length > 0) {
+                alert("You have already sent a pending enquiry for this crop to this mill.");
+                setIsSubmitting(false);
+                return;
+            }
+
             const { error } = await supabase
                 .from('enquiries')
                 .insert({
