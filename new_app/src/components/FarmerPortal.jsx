@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, setDoc, deleteDoc, getDoc, query, where } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../utils/supabase';
 import { fetchWeatherByCoords, fetchWeatherByCity, getWeatherIcon } from '../services/weather';
 import AddCropModal from './AddCropModal';
 import SendEnquiryModal from './SendEnquiryModal';
@@ -73,14 +72,28 @@ export default function FarmerPortal({ user, onLogout }) {
     const fetchCrops = async () => {
         setLoadingCrops(true);
         try {
-            const cropsRef = collection(db, `${user.role}s/${user.phone}/crops`);
-            const snap = await getDocs(cropsRef);
-            if (!snap.empty) {
-                const fetchedCrops = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setCrops(fetchedCrops);
+            const { data: fetchedCrops, error } = await supabase
+                .from('crops')
+                .select('*')
+                .eq('user_phone', user.phone)
+                .eq('user_role', user.role);
+
+            if (error) throw error;
+
+            if (fetchedCrops && fetchedCrops.length > 0) {
+                const mappedCrops = fetchedCrops.map(c => ({
+                    id: c.id,
+                    cropName: c.crop_name,
+                    locationName: c.location_name,
+                    latitude: c.latitude,
+                    longitude: c.longitude,
+                    acres: c.acres,
+                    addedAt: c.added_at
+                }));
+                setCrops(mappedCrops);
 
                 // Set initial weather location to latest crop
-                const lastCrop = fetchedCrops[fetchedCrops.length - 1];
+                const lastCrop = mappedCrops[mappedCrops.length - 1];
                 setSelectedWeatherLocation(lastCrop);
             } else {
                 setCrops([]);
@@ -101,10 +114,32 @@ export default function FarmerPortal({ user, onLogout }) {
 
     const fetchOrders = async () => {
         try {
-            const q = query(collection(db, 'enquiries'), where('farmerPhone', '==', user.phone), where('status', '==', 'accepted'));
-            const snap = await getDocs(q);
-            const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (b.updatedAt?.toMillis() || 0) - (a.updatedAt?.toMillis() || 0));
-            setOrders(list);
+            const { data: list, error } = await supabase
+                .from('enquiries')
+                .select('*')
+                .eq('farmer_phone', user.phone)
+                .eq('status', 'accepted');
+
+            if (error) throw error;
+
+            const mappedOrders = (list || []).map(o => ({
+                id: o.id,
+                millId: o.mill_id,
+                buyerPhone: o.buyer_phone,
+                buyerName: o.buyer_name,
+                farmerPhone: o.farmer_phone,
+                farmerName: o.farmer_name,
+                cropName: o.crop_name,
+                quantity: o.quantity,
+                status: o.status,
+                pricePerQuintal: o.price_per_quintal,
+                totalPrice: o.total_price,
+                cropId: o.crop_id,
+                createdAt: o.created_at,
+                updatedAt: o.updated_at
+            })).sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+
+            setOrders(mappedOrders);
         } catch (error) {
             console.error("Error fetching orders:", error);
         }
@@ -112,15 +147,39 @@ export default function FarmerPortal({ user, onLogout }) {
 
     const handleSaveCrop = async (cropData) => {
         try {
-            const cropId = `crop_${Date.now()}`;
-            const cropRef = doc(db, `${user.role}s/${user.phone}/crops/${cropId}`);
-            const dataToSave = { ...cropData, addedAt: new Date() };
-            await setDoc(cropRef, dataToSave);
+            const dataToSave = {
+                user_phone: user.phone,
+                user_role: user.role,
+                crop_name: cropData.cropName,
+                location_name: cropData.locationName,
+                latitude: cropData.latitude,
+                longitude: cropData.longitude,
+                acres: cropData.acres,
+                added_at: new Date().toISOString()
+            };
 
-            setCrops(prev => [...prev, { id: cropId, ...dataToSave }]);
+            const { data, error } = await supabase
+                .from('crops')
+                .insert(dataToSave)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            const mappedNewCrop = {
+                id: data.id,
+                cropName: data.crop_name,
+                locationName: data.location_name,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                acres: data.acres,
+                addedAt: data.added_at
+            };
+
+            setCrops(prev => [...prev, mappedNewCrop]);
 
             // Update weather dropdown selection to the new crop
-            setSelectedWeatherLocation(dataToSave);
+            setSelectedWeatherLocation(mappedNewCrop);
 
             alert(`Successfully saved crop: ${cropData.cropName} at ${cropData.locationName}`);
         } catch (error) {
@@ -132,7 +191,12 @@ export default function FarmerPortal({ user, onLogout }) {
     const handleDeleteCrop = async (id) => {
         if (!window.confirm("Are you sure you want to delete this crop?")) return;
         try {
-            await deleteDoc(doc(db, `${user.role}s/${user.phone}/crops/${id}`));
+            const { error } = await supabase
+                .from('crops')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
             setCrops(prev => prev.filter(c => c.id !== id));
         } catch (error) {
             console.error(error);
@@ -143,10 +207,13 @@ export default function FarmerPortal({ user, onLogout }) {
     const handleUpdateProfile = async () => {
         setIsSavingProfile(true);
         try {
-            const userRef = doc(db, `${user.role}s`, user.phone);
-            await setDoc(userRef, { name: profileName, altPhone: profileAltPhone }, { merge: true });
+            const { error } = await supabase
+                .from(`${user.role}s`)
+                .update({ name: profileName, altPhone: profileAltPhone })
+                .eq('phone', user.phone);
+
+            if (error) throw error;
             alert('Profile updated successfully!');
-            // Update local user state if needed, though typically one relies on the portal reloading or lifting state up
         } catch (error) {
             console.error(error);
             alert('Failed to update profile');
@@ -161,50 +228,71 @@ export default function FarmerPortal({ user, onLogout }) {
 
         setIsUpdatingSecurity(true);
         try {
-            const oldRef = doc(db, `${user.role}s`, user.phone);
             const isPhoneChanged = newPhone !== user.phone;
 
             if (isPhoneChanged) {
-                const newRef = doc(db, `${user.role}s`, newPhone);
                 // Check if new phone already exists
-                const newSnap = await getDoc(newRef);
-                if (newSnap.exists()) {
+                const { data: existingUser, error: checkError } = await supabase
+                    .from(`${user.role}s`)
+                    .select('phone')
+                    .eq('phone', newPhone)
+                    .maybeSingle();
+
+                if (checkError) throw checkError;
+
+                if (existingUser) {
                     setIsUpdatingSecurity(false);
                     return alert("This new phone number is already registered.");
                 }
 
                 // Create new user doc
                 const newUserData = {
-                    ...user,
                     phone: newPhone,
                     pin: newPin,
+                    role: user.role,
                     name: profileName,
-                    altPhone: profileAltPhone
+                    altPhone: profileAltPhone,
+                    created_at: new Date().toISOString()
                 };
-                await setDoc(newRef, newUserData);
+
+                const { error: createError } = await supabase
+                    .from(`${user.role}s`)
+                    .insert(newUserData);
+
+                if (createError) throw createError;
 
                 // Migrate crops
-                const cropsRef = collection(db, `${user.role}s/${user.phone}/crops`);
-                const snap = await getDocs(cropsRef);
-                for (const cropDoc of snap.docs) {
-                    await setDoc(doc(db, `${user.role}s/${newPhone}/crops/${cropDoc.id}`), cropDoc.data());
-                    await deleteDoc(doc(db, `${user.role}s/${user.phone}/crops/${cropDoc.id}`));
-                }
+                const { error: migrateError } = await supabase
+                    .from('crops')
+                    .update({ user_phone: newPhone })
+                    .eq('user_phone', user.phone);
+
+                if (migrateError) throw migrateError;
 
                 // Delete old user doc
-                await deleteDoc(oldRef);
+                const { error: deleteError } = await supabase
+                    .from(`${user.role}s`)
+                    .delete()
+                    .eq('phone', user.phone);
+
+                if (deleteError) throw deleteError;
 
                 alert("Phone number changed successfully! Please log in again with your new credentials.");
                 onLogout(); // Force logout so they login with new phone
             } else {
                 // Just updating PIN
-                await setDoc(oldRef, { pin: newPin }, { merge: true });
+                const { error: updateError } = await supabase
+                    .from(`${user.role}s`)
+                    .update({ pin: newPin })
+                    .eq('phone', user.phone);
+
+                if (updateError) throw updateError;
                 alert("PIN updated successfully!");
                 user.pin = newPin; // update local ref
             }
         } catch (error) {
             console.error(error);
-            alert("Error updating security settings.");
+            alert("Error updating security settings");
         } finally {
             setIsUpdatingSecurity(false);
         }
@@ -225,13 +313,34 @@ export default function FarmerPortal({ user, onLogout }) {
         setSelectedCropForSearch(crop);
         setIsSearchingMills(true);
         try {
-            // Find all verified mills that buy this crop
-            const q = query(collection(db, 'mills'), where('status', '==', 'verified'), where('selectedCrops', 'array-contains', crop.cropName));
-            const snap = await getDocs(q);
-            const allMills = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Find all verified mills that buy this crop (selectedCrops contains the cropName)
+            const { data: allMills, error } = await supabase
+                .from('mills')
+                .select('*')
+                .eq('status', 'verified')
+                .contains('selectedCrops', [crop.cropName]);
+
+            if (error) throw error;
+
+            const mappedMills = (allMills || []).map(m => ({
+                id: m.id,
+                ownerPhone: m.owner_phone,
+                millName: m.mill_name,
+                millType: m.mill_type,
+                capacity: m.capacity,
+                requirements: m.requirements,
+                selectedCrops: m.selectedCrops,
+                locationName: m.location_name,
+                latitude: m.latitude,
+                longitude: m.longitude,
+                hasColdStorage: m.has_cold_storage,
+                prices: m.prices,
+                status: m.status,
+                addedAt: m.created_at
+            }));
 
             // Calculate distance for each and sort
-            const withDistance = allMills.map(mill => ({
+            const withDistance = mappedMills.map(mill => ({
                 ...mill,
                 distance: calculateDistance(crop.latitude, crop.longitude, mill.latitude, mill.longitude)
             })).sort((a, b) => a.distance - b.distance);

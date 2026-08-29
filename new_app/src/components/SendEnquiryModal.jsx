@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../utils/supabase';
 
 export default function SendEnquiryModal({ onClose, mill, crop, user }) {
     const [acres, setAcres] = useState(crop?.acres || '');
@@ -17,26 +16,31 @@ export default function SendEnquiryModal({ onClose, mill, crop, user }) {
 
         setIsSubmitting(true);
         try {
-            await addDoc(collection(db, 'enquiries'), {
-                millId: mill.id,
-                millName: mill.millName,
-                buyerPhone: mill.ownerPhone, // Buyer will fetch enquiries where buyerPhone == user.phone
-                farmerPhone: user.phone,
-                farmerName: user.name || user.phone,
-                cropName: crop?.cropName || 'Unknown Crop',
-                acres: Number(acres),
-                withTransport: withTransport,
-                message: message,
-                status: 'pending',
-                createdAt: new Date(),
-                farmerLat: crop?.latitude || null,
-                farmerLng: crop?.longitude || null,
-                farmerLocationName: crop?.locationName || '',
-                millLat: mill?.latitude || null,
-                millLng: mill?.longitude || null,
-                millLocationName: mill?.locationName || '',
-                distance: mill?.distance || 0,
-            });
+            const { error } = await supabase
+                .from('enquiries')
+                .insert({
+                    mill_id: mill.id,
+                    mill_name: mill.millName,
+                    buyer_phone: mill.ownerPhone,
+                    farmer_phone: user.phone,
+                    farmer_name: user.name || user.phone,
+                    crop_name: crop?.cropName || 'Unknown Crop',
+                    acres: Number(acres),
+                    with_transport: withTransport,
+                    message: message,
+                    status: 'pending',
+                    created_at: new Date().toISOString(),
+                    farmer_lat: crop?.latitude || null,
+                    farmer_lng: crop?.longitude || null,
+                    farmer_location_name: crop?.locationName || '',
+                    mill_lat: mill?.latitude || null,
+                    mill_lng: mill?.longitude || null,
+                    mill_location_name: mill?.locationName || '',
+                    distance: mill?.distance || 0,
+                });
+
+            if (error) throw error;
+
             alert('Enquiry sent successfully!');
             onClose();
         } catch (error) {

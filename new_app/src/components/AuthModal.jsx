@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../utils/supabase';
 
 export default function AuthModal({ role, onClose, onLoginSuccess }) {
     const [step, setStep] = useState('action'); // 'action' | 'form'
@@ -30,13 +29,18 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
         setLoading(true);
 
         try {
-            const userRef = doc(db, role.id, phone);
-            const userSnap = await getDoc(userRef);
+            const { data: userData, error: fetchError } = await supabase
+                .from(role.id)
+                .select('*')
+                .eq('phone', phone)
+                .maybeSingle();
+
+            if (fetchError) throw fetchError;
 
             if (action === 'login') {
-                if (userSnap.exists()) {
-                    if (userSnap.data().pin === pin) {
-                        onLoginSuccess({ phone, ...userSnap.data() });
+                if (userData) {
+                    if (userData.pin === pin) {
+                        onLoginSuccess({ phone, ...userData });
                     } else {
                         setError('Wrong PIN. Please try again.');
                     }
@@ -44,22 +48,26 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
                     setError('Account not found. Please sign up first.');
                 }
             } else if (action === 'signup') {
-                if (userSnap.exists()) {
+                if (userData) {
                     setError('Account already exists. Please login instead.');
                 } else {
                     const newUser = {
                         phone: phone,
                         pin: pin,
                         role: role.id.slice(0, -1),
-                        createdAt: new Date(),
+                        created_at: new Date().toISOString(),
                     };
-                    await setDoc(userRef, newUser);
+                    const { error: insertError } = await supabase
+                        .from(role.id)
+                        .insert(newUser);
+
+                    if (insertError) throw insertError;
                     onLoginSuccess(newUser);
                 }
             }
         } catch (err) {
             console.error(err);
-            setError('Error connecting to database. Please try again.');
+            setError(err.message || 'Error connecting to database. Please try again.');
         } finally {
             setLoading(false);
         }

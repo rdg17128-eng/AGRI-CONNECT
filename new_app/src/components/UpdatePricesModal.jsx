@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { db } from '../services/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { supabase } from '../utils/supabase';
 
 export default function UpdatePricesModal({ mill, onClose, onUpdated }) {
-    const [prices, setPrices] = useState(mill.cropPrices || {});
+    const [prices, setPrices] = useState(mill.prices || {});
     const [isSaving, setIsSaving] = useState(false);
 
     const handlePriceChange = (crop, value) => {
@@ -14,7 +13,13 @@ export default function UpdatePricesModal({ mill, onClose, onUpdated }) {
         e.preventDefault();
         setIsSaving(true);
         try {
-            await updateDoc(doc(db, 'mills', mill.id), { cropPrices: prices });
+            const { error } = await supabase
+                .from('mills')
+                .update({ prices: prices })
+                .eq('id', mill.id);
+
+            if (error) throw error;
+
             alert("Prices updated successfully!");
             onUpdated();
             onClose();

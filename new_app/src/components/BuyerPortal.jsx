@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, setDoc, deleteDoc, getDoc, query, where } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../utils/supabase';
 import AddMillModal from './AddMillModal';
 import UpdatePricesModal from './UpdatePricesModal';
 
@@ -46,10 +45,30 @@ export default function BuyerPortal({ user, onLogout }) {
     const fetchMills = async () => {
         setLoadingMills(true);
         try {
-            const q = query(collection(db, 'mills'), where('ownerPhone', '==', user.phone));
-            const snap = await getDocs(q);
-            const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setMills(list);
+            const { data, error } = await supabase
+                .from('mills')
+                .select('*')
+                .eq('owner_phone', user.phone);
+
+            if (error) throw error;
+
+            const mappedMills = (data || []).map(m => ({
+                id: m.id,
+                ownerPhone: m.owner_phone,
+                millName: m.mill_name,
+                millType: m.mill_type,
+                capacity: m.capacity,
+                requirements: m.requirements,
+                selectedCrops: m.selectedCrops,
+                locationName: m.location_name,
+                latitude: m.latitude,
+                longitude: m.longitude,
+                hasColdStorage: m.has_cold_storage,
+                prices: m.prices,
+                status: m.status,
+                addedAt: m.created_at
+            }));
+            setMills(mappedMills);
         } catch (error) {
             console.error("Error fetching mills:", error);
         } finally {
@@ -60,10 +79,30 @@ export default function BuyerPortal({ user, onLogout }) {
     const fetchEnquiries = async () => {
         setLoadingEnquiries(true);
         try {
-            const q = query(collection(db, 'enquiries'), where('buyerPhone', '==', user.phone));
-            const snap = await getDocs(q);
-            const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-            setEnquiries(list);
+            const { data, error } = await supabase
+                .from('enquiries')
+                .select('*')
+                .eq('buyer_phone', user.phone);
+
+            if (error) throw error;
+
+            const mappedEnquiries = (data || []).map(o => ({
+                id: o.id,
+                millId: o.mill_id,
+                buyerPhone: o.buyer_phone,
+                buyerName: o.buyer_name,
+                farmerPhone: o.farmer_phone,
+                farmerName: o.farmer_name,
+                cropName: o.crop_name,
+                quantity: o.quantity,
+                status: o.status,
+                pricePerQuintal: o.price_per_quintal,
+                totalPrice: o.total_price,
+                cropId: o.crop_id,
+                createdAt: o.created_at,
+                updatedAt: o.updated_at
+            })).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            setEnquiries(mappedEnquiries);
         } catch (error) {
             console.error("Error fetching enquiries:", error);
         } finally {
@@ -74,7 +113,13 @@ export default function BuyerPortal({ user, onLogout }) {
     const handleAcceptEnquiry = async (enquiryId) => {
         if (!window.confirm('Do you want to accept this order and securely share your accurate mill location with the farmer for logistics?')) return;
         try {
-            await setDoc(doc(db, 'enquiries', enquiryId), { status: 'accepted', updatedAt: new Date() }, { merge: true });
+            const { error } = await supabase
+                .from('enquiries')
+                .update({ status: 'accepted', updated_at: new Date().toISOString() })
+                .eq('id', enquiryId);
+
+            if (error) throw error;
+
             setEnquiries(prev => prev.map(enq => enq.id === enquiryId ? { ...enq, status: 'accepted' } : enq));
             alert('Enquiry accepted successfully! The farmer has been notified.');
         } catch (error) {
@@ -86,7 +131,6 @@ export default function BuyerPortal({ user, onLogout }) {
     const handleUpdateProfile = async () => {
         setIsSavingProfile(true);
         try {
-            const userRef = doc(db, `${user.role}s`, user.phone);
             const buyerData = {
                 name: profileName,
                 altPhone: profileAltPhone,
@@ -94,9 +138,14 @@ export default function BuyerPortal({ user, onLogout }) {
                 businessType: businessType,
                 buyingCapacity: buyingCapacity,
                 preferredCrops: preferredCrops,
-                lastUpdated: new Date()
+                created_at: new Date().toISOString()
             };
-            await setDoc(userRef, buyerData, { merge: true });
+            const { error } = await supabase
+                .from(`${user.role}s`)
+                .update(buyerData)
+                .eq('phone', user.phone);
+
+            if (error) throw error;
             alert('Buyer profile and records synchronized successfully!');
         } catch (error) {
             console.error(error);
@@ -112,31 +161,63 @@ export default function BuyerPortal({ user, onLogout }) {
 
         setIsUpdatingSecurity(true);
         try {
-            const oldRef = doc(db, `${user.role}s`, user.phone);
             const isPhoneChanged = newPhone !== user.phone;
 
             if (isPhoneChanged) {
-                const newRef = doc(db, `${user.role}s`, newPhone);
-                const newSnap = await getDoc(newRef);
-                if (newSnap.exists()) {
+                const { data: existingUser, error: checkError } = await supabase
+                    .from(`${user.role}s`)
+                    .select('phone')
+                    .eq('phone', newPhone)
+                    .maybeSingle();
+
+                if (checkError) throw checkError;
+
+                if (existingUser) {
                     setIsUpdatingSecurity(false);
                     return alert("This new phone number is already registered.");
                 }
 
                 const newUserData = {
-                    ...user,
                     phone: newPhone,
                     pin: newPin,
                     name: profileName,
-                    altPhone: profileAltPhone
+                    altPhone: profileAltPhone,
+                    gstNumber: gstNumber,
+                    businessType: businessType,
+                    buyingCapacity: buyingCapacity,
+                    created_at: new Date().toISOString()
                 };
-                await setDoc(newRef, newUserData);
-                await deleteDoc(oldRef);
+                const { error: createError } = await supabase
+                    .from(`${user.role}s`)
+                    .insert(newUserData);
+
+                if (createError) throw createError;
+
+                // Migrate owned mills
+                const { error: migrateMillsError } = await supabase
+                    .from('mills')
+                    .update({ owner_phone: newPhone })
+                    .eq('owner_phone', user.phone);
+
+                if (migrateMillsError) throw migrateMillsError;
+
+                // Delete old user doc
+                const { error: deleteError } = await supabase
+                    .from(`${user.role}s`)
+                    .delete()
+                    .eq('phone', user.phone);
+
+                if (deleteError) throw deleteError;
 
                 alert("Phone number changed successfully! Please log in again.");
                 onLogout();
             } else {
-                await setDoc(oldRef, { pin: newPin }, { merge: true });
+                const { error: updateError } = await supabase
+                    .from(`${user.role}s`)
+                    .update({ pin: newPin })
+                    .eq('phone', user.phone);
+
+                if (updateError) throw updateError;
                 alert("PIN updated successfully!");
                 user.pin = newPin;
             }

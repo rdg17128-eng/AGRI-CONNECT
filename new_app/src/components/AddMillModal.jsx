@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { db } from '../services/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase } from '../utils/supabase';
 import MapModal from './MapModal';
 
 export default function AddMillModal({ user, onClose, onMillAdded }) {
@@ -63,21 +62,26 @@ export default function AddMillModal({ user, onClose, onMillAdded }) {
         setLoading(true);
         try {
             const millData = {
-                ownerPhone: user.phone,
-                millName,
-                millType,
-                capacity,
+                owner_phone: user.phone,
+                mill_name: millName,
+                mill_type: millType,
+                capacity: capacity ? parseFloat(capacity) : null,
                 requirements,
-                selectedCrops,
-                locationName: location.name,
+                selectedCrops: selectedCrops,
+                location_name: location.name,
                 latitude: location.lat,
                 longitude: location.lng,
-                hasColdStorage,
+                has_cold_storage: hasColdStorage,
                 status: 'verified',
-                addedAt: serverTimestamp()
+                created_at: new Date().toISOString()
             };
 
-            await addDoc(collection(db, 'mills'), millData);
+            const { error } = await supabase
+                .from('mills')
+                .insert(millData);
+
+            if (error) throw error;
+
             alert('Mill registered successfully! It is now pending verification.');
             onMillAdded();
             onClose();

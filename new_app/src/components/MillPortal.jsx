@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../utils/supabase';
 
 export default function MillPortal({ user, onLogout }) {
     const [activeTab, setActiveTab] = useState('dashboard');
@@ -26,13 +25,17 @@ export default function MillPortal({ user, onLogout }) {
     const handleUpdateProfile = async () => {
         setIsSavingProfile(true);
         try {
-            const userRef = doc(db, `${user.role}s`, user.phone);
-            await setDoc(userRef, {
-                name: profileName,
-                altPhone: profileAltPhone,
-                millType: millType,
-                hasColdStorage: hasColdStorage
-            }, { merge: true });
+            const { error } = await supabase
+                .from(`${user.role}s`)
+                .update({
+                    name: profileName,
+                    altPhone: profileAltPhone,
+                    millType: millType,
+                    hasColdStorage: hasColdStorage
+                })
+                .eq('phone', user.phone);
+
+            if (error) throw error;
             alert('Profile and Mill information updated successfully!');
         } catch (error) {
             console.error(error);
@@ -47,22 +50,63 @@ export default function MillPortal({ user, onLogout }) {
         if (!newPin || newPin.length !== 6 || isNaN(newPin)) return alert("Please enter a valid 6-digit PIN.");
 
         try {
-            const oldRef = doc(db, `${user.role}s`, user.phone);
             const isPhoneChanged = newPhone !== user.phone;
 
             if (isPhoneChanged) {
-                const newRef = doc(db, `${user.role}s`, newPhone);
-                const newSnap = await getDoc(newRef);
-                if (newSnap.exists()) {
+                const { data: existingUser, error: checkError } = await supabase
+                    .from(`${user.role}s`)
+                    .select('phone')
+                    .eq('phone', newPhone)
+                    .maybeSingle();
+
+                if (checkError) throw checkError;
+
+                if (existingUser) {
                     return alert("This phone number is already registered.");
                 }
-                const newUserData = { ...user, phone: newPhone, pin: newPin, name: profileName, altPhone: profileAltPhone };
-                await setDoc(newRef, newUserData);
-                await deleteDoc(oldRef);
+
+                const newUserData = {
+                    phone: newPhone,
+                    pin: newPin,
+                    role: user.role,
+                    name: profileName,
+                    altPhone: profileAltPhone,
+                    millType: millType,
+                    hasColdStorage: hasColdStorage,
+                    created_at: new Date().toISOString()
+                };
+
+                const { error: createError } = await supabase
+                    .from(`${user.role}s`)
+                    .insert(newUserData);
+
+                if (createError) throw createError;
+
+                // Migrate associated mills
+                const { error: migrateMillsError } = await supabase
+                    .from('mills')
+                    .update({ owner_phone: newPhone })
+                    .eq('owner_phone', user.phone);
+
+                if (migrateMillsError) throw migrateMillsError;
+
+                // Delete old user
+                const { error: deleteError } = await supabase
+                    .from(`${user.role}s`)
+                    .delete()
+                    .eq('phone', user.phone);
+
+                if (deleteError) throw deleteError;
+
                 alert("Changed successfully! Please login again.");
                 onLogout();
             } else {
-                await setDoc(oldRef, { pin: newPin }, { merge: true });
+                const { error: updateError } = await supabase
+                    .from(`${user.role}s`)
+                    .update({ pin: newPin })
+                    .eq('phone', user.phone);
+
+                if (updateError) throw updateError;
                 alert("PIN updated!");
                 user.pin = newPin;
             }
