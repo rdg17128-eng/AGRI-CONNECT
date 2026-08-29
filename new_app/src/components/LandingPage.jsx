@@ -113,9 +113,9 @@ export default function LandingPage({ onLogin }) {
                         <i className="fa-solid fa-leaf"></i>
                         <span style={{ fontSize: '2rem' }}>AgriConnect</span>
                     </div>
-                    <h1 style={{ marginBottom: '0.75rem', fontSize: '2.5rem', fontWeight: 900, lineHeight: 1.2 }}>
+                    <h1 style={{ marginBottom: '0.75rem', fontSize: 'clamp(2rem, 4.5vw, 3.2rem)', fontWeight: 900, lineHeight: 1.2 }}>
                         Agriculture Reimagined <br />
-                        <span style={{ color: 'var(--primary)' }}>For The Digital Era</span>
+                        <span style={{ color: 'var(--accent-gold)' }}>For The Digital Era</span>
                     </h1>
                     <p style={{ fontSize: '1rem', maxWidth: '800px', margin: '0 auto', color: 'var(--text-muted)', lineHeight: '1.5' }}>
                         India's most advanced unified agricultural ecosystem connecting producers, processors,
