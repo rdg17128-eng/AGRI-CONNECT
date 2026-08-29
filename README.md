@@ -48,9 +48,9 @@ AgriConnect utilizes a lightweight, modern, and highly responsive tech stack:
 
 * **Frontend Framework:** React 18+ with Vite for fast Hot Module Replacement (HMR).
 * **Styling & Animation:** Custom Vanilla CSS tailored with modern glassmorphism, responsive grids, and customized animations (including floating pollen particles representing the fusion of nature & data).
-* **Backend Services:** **Firebase** integration:
-  * **Cloud Firestore:** For real-time, zero-latency updates of crop lists, enquiries, and mill status.
-  * **Firebase Analytics:** For usage monitoring.
+* **Backend Services:** **Supabase** (PostgreSQL) integration:
+  * **Database Tables:** Structured storage for users (`farmers`, `buyers`, `consumers`, `mills`), `crops` logs, and `enquiries` transaction parameters.
+  * **Security Policies:** Row Level Security (RLS) policies configured to manage CRUD access rules.
 * **External APIs:** **Open-Meteo API** (free, coordinates-based meteorological prediction engine).
 
 ---
@@ -80,10 +80,11 @@ AgriConnect utilizes a lightweight, modern, and highly responsive tech stack:
    ```
 
 4. **Environment Configuration:**
-   Create a `.env` file in the `new_app` directory (using `.env.example` as a template) and add your Firebase credentials:
-   ```env
-   VITE_FIREBASE_API_KEY=your_firebase_api_key_here
-   ```
+    Create a `.env` file in the `new_app` directory (using `.env.example` as a template) and add your Supabase credentials:
+    ```env
+    VITE_SUPABASE_URL=https://gxogbczrbmjlzcadvafu.supabase.co
+    VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_gwmcOaotUnRFtC4-fosV0w_9l1gnjs_
+    ```
 
 5. **Start the local development server:**
    ```bash
@@ -96,6 +97,7 @@ AgriConnect utilizes a lightweight, modern, and highly responsive tech stack:
 ## 🎨 Theme & Visual Philosophy
 
 AgriConnect uses a curated, premium visual scheme designed to wow users:
-* **Deep Earth Tones:** A dark charcoal-grey canvas base (`#171717`) blended with rich forest greens (`#15803d`) and leaf green highlights.
+* **Green & Gold-Brown Color Palette:** Premium agricultural leaf green (`#10b981`) combined with a metallic golden wheat-brown (`#c59b4e`) for highlights, tag badges, and custom glowing borders.
+* **Earthy Mesh Backgrounds:** Dark forest green and warm golden-wheat earth-brown radial gradient flows.
 * **Interactive Particle System:** Floating, glowing dots on the landing page represent seeds, pollen, and data points floating upwards, symbolizing growth and digital interconnectedness.
 * **Glassmorphism:** Frosted translucent cards and modal windows that blend beautifully into the background sunset imagery.
