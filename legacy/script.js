@@ -1,32 +1,19 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 import { fetchWeatherByCoords } from "./weather.js";
 
-// Firebase configuration
-const firebaseConfig = {
-    apiKey: "",
-    authDomain: "green-grid-b2222.firebaseapp.com",
-    projectId: "green-grid-b2222",
-    storageBucket: "green-grid-b2222.firebasestorage.app",
-    messagingSenderId: "367679697189",
-    appId: "1:367679697189:web:ef5ad8ebe8f02df185eacc",
-    measurementId: "G-0R0BCB59E3"
-};
+let supabaseUrl = "https://gxogbczrbmjlzcadvafu.supabase.co";
+let supabaseKey = "";
 
 try {
     const config = await import("./config.js");
-    if (config.firebaseConfig && config.firebaseConfig.apiKey) {
-        firebaseConfig.apiKey = config.firebaseConfig.apiKey;
-    }
+    if (config.supabaseUrl) supabaseUrl = config.supabaseUrl;
+    if (config.supabaseKey) supabaseKey = config.supabaseKey;
 } catch (error) {
     console.warn("Local config.js not found. Using default placeholders.");
 }
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const db = getFirestore(app);
+// Initialize Supabase
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 document.addEventListener('DOMContentLoaded', () => {
     // Portal Selection Logic
@@ -135,13 +122,18 @@ document.addEventListener('DOMContentLoaded', () => {
             btnAuthSubmit.disabled = true;
 
             try {
-                const userRef = doc(db, currentRole, phone);
-                const userSnap = await getDoc(userRef);
+                const { data: userData, error: fetchError } = await supabase
+                    .from(currentRole)
+                    .select('*')
+                    .eq('phone', phone)
+                    .maybeSingle();
+
+                if (fetchError) throw fetchError;
 
                 if (authAction === 'login') {
-                    if (userSnap.exists()) {
+                    if (userData) {
                         // User exists, verify PIN
-                        if (userSnap.data().pin === pin) {
+                        if (userData.pin === pin) {
                             currentPhoneNumber = phone;
                             loginSuccess();
                         } else {
@@ -154,17 +146,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         authError.style.display = 'block';
                     }
                 } else if (authAction === 'signup') {
-                    if (userSnap.exists()) {
+                    if (userData) {
                         authError.textContent = 'Account already exists. Please login instead.';
                         authError.style.display = 'block';
                     } else {
                         // Create new user
-                        await setDoc(userRef, {
+                        const newUser = {
                             phone: phone,
                             pin: pin,
                             role: currentRole.slice(0, -1),
-                            createdAt: new Date()
-                        });
+                            created_at: new Date().toISOString()
+                        };
+                        const { error: insertError } = await supabase
+                            .from(currentRole)
+                            .insert(newUser);
+
+                        if (insertError) throw insertError;
+
                         currentPhoneNumber = phone;
                         loginSuccess();
                     }
@@ -211,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function fetchUserCrops() {
-        if (!currentRole || !currentPhoneNumber || !db) return;
+        if (!currentRole || !currentPhoneNumber || !supabase) return;
 
         const myCropsList = document.getElementById('my-crops-list');
         const noCropsRow = document.getElementById('no-crops-row');
@@ -219,10 +217,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const dashCropLoc = document.getElementById('dashboard-crop-location');
 
         try {
-            const cropsRef = collection(db, `${currentRole}/${currentPhoneNumber}/crops`);
-            const cropsSnapshot = await getDocs(cropsRef);
+            const { data: fetchedCrops, error } = await supabase
+                .from('crops')
+                .select('*')
+                .eq('user_phone', currentPhoneNumber)
+                .eq('user_role', currentRole.slice(0, -1));
 
-            if (!cropsSnapshot.empty) {
+            if (error) throw error;
+
+            if (fetchedCrops && fetchedCrops.length > 0) {
                 if (noCropsRow) noCropsRow.style.display = 'none';
 
                 // Clear existing crops just in case to avoid duplicates
@@ -240,23 +243,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 let lastLat = null;
                 let lastLng = null;
 
-                cropsSnapshot.forEach((docSnap) => {
-                    const data = docSnap.data();
+                fetchedCrops.forEach((crop) => {
                     cropCount++;
 
-                    const finalCropName = data.cropName || 'Unknown Crop';
-                    const locName = data.locationName || 'Unknown Location';
+                    const finalCropName = crop.crop_name || 'Unknown Crop';
+                    const locName = crop.location_name || 'Unknown Location';
 
                     lastCropName = finalCropName;
                     lastCropLoc = locName;
-                    if (data.latitude && data.longitude) {
-                        lastLat = data.latitude;
-                        lastLng = data.longitude;
+                    if (crop.latitude && crop.longitude) {
+                        lastLat = crop.latitude;
+                        lastLng = crop.longitude;
                     }
 
                     let dateAdded = 'Unknown Date';
-                    if (data.addedAt && data.addedAt.toDate) {
-                        dateAdded = data.addedAt.toDate().toLocaleDateString('en-IN', {
+                    if (crop.added_at) {
+                        dateAdded = new Date(crop.added_at).toLocaleDateString('en-IN', {
                             day: '2-digit', month: 'short', year: 'numeric'
                         });
                     }
@@ -264,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (myCropsList) {
                         const newRow = document.createElement('tr');
                         newRow.style.borderBottom = '1px solid var(--border-color)';
-                        const docId = docSnap.id;
+                        const docId = crop.id;
 
                         newRow.innerHTML = `
                             <td style="padding: 1rem;">
@@ -278,7 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <td style="padding: 1rem; color: var(--text-muted);">
                                 <i class="fa-solid fa-location-dot" style="margin-right: 0.5rem; color: var(--primary);"></i> ${locName}
                             </td>
-                            <td style="padding: 1rem; color: var(--text-muted);">${data.acres || '-'} Acres</td>
+                            <td style="padding: 1rem; color: var(--text-muted);">${crop.acres || '-'} Acres</td>
                             <td style="padding: 1rem; color: var(--text-muted);">${dateAdded}</td>
                             <td style="padding: 1rem; text-align: center;">
                                 <button class="action-btn text-btn delete-crop-btn" data-id="${docId}" style="color: var(--danger); font-size: 0.9rem;" title="Remove Crop">
@@ -614,25 +616,25 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchWeatherByCoords(latVal, lngVal);
 
             try {
-                // Dynamically import specific firestore methods required 
-                // Alternatively relying on globals we used in script.js head.
-                const { setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-
-                // Save crop details into Firebase under current logged in user (if they are logged in)
-                let cropId = `crop_${Date.now()}`;
                 if (currentPhoneNumber && currentRole) {
-                    const cropRef = doc(db, `${currentRole}/${currentPhoneNumber}/crops/${cropId}`);
-
-                    await setDoc(cropRef, {
-                        cropName: finalCropName,
-                        locationName: locName,
+                    const dataToSave = {
+                        user_phone: currentPhoneNumber,
+                        user_role: currentRole.slice(0, -1),
+                        crop_name: finalCropName,
+                        location_name: locName,
                         latitude: latVal,
                         longitude: lngVal,
                         acres: parseFloat(acresVal),
-                        addedAt: new Date()
-                    });
+                        added_at: new Date().toISOString()
+                    };
+
+                    const { error } = await supabase
+                        .from('crops')
+                        .insert(dataToSave);
+
+                    if (error) throw error;
                 } else {
-                    console.warn("User not fully authenticated but saving was bypassed in dev. Crop not persisted to cloud.");
+                    console.warn("User not fully authenticated. Crop not persisted to cloud.");
                 }
 
                 alert(`Successfully saved crop: ${finalCropName} at ${locName} to database!`);
@@ -760,7 +762,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!btn) return;
 
             const cropId = btn.getAttribute('data-id');
-            if (!cropId || !currentRole || !currentPhoneNumber || !db) return;
+            if (!cropId || !currentRole || !currentPhoneNumber || !supabase) return;
 
             if (confirm("Are you sure you want to delete this crop?")) {
                 const tr = btn.closest('tr');
@@ -769,9 +771,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     btn.disabled = true;
                     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
                     try {
-                        const cropRef = doc(db, `${currentRole}/${currentPhoneNumber}/crops/${cropId}`);
+                        const { error } = await supabase
+                            .from('crops')
+                            .delete()
+                            .eq('id', cropId);
 
-                        await deleteDoc(cropRef);
+                        if (error) throw error;
 
                         tr.remove(); // Remove row from table directly
 
