@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 export default function MillPortal({ user, onLogout }) {
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
 
     // Profile States
@@ -11,15 +12,11 @@ export default function MillPortal({ user, onLogout }) {
     const [profileAltPhone, setProfileAltPhone] = useState(user.altPhone || '');
     const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-    // Security States
     const [newPhone, setNewPhone] = useState(user.phone || '');
     const [newPin, setNewPin] = useState(user.pin || '');
-    const [isUpdatingSecurity, setIsUpdatingSecurity] = useState(false);
 
-    // Mill Specific States
     const [millType, setMillType] = useState(user.millType || '');
     const [hasColdStorage, setHasColdStorage] = useState(user.hasColdStorage || false);
-    const [isSavingMillInfo, setIsSavingMillInfo] = useState(false);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -49,7 +46,6 @@ export default function MillPortal({ user, onLogout }) {
         if (!newPhone || newPhone.length !== 10 || isNaN(newPhone)) return alert("Please enter a valid 10-digit phone number.");
         if (!newPin || newPin.length !== 6 || isNaN(newPin)) return alert("Please enter a valid 6-digit PIN.");
 
-        setIsUpdatingSecurity(true);
         try {
             const oldRef = doc(db, `${user.role}s`, user.phone);
             const isPhoneChanged = newPhone !== user.phone;
@@ -58,7 +54,6 @@ export default function MillPortal({ user, onLogout }) {
                 const newRef = doc(db, `${user.role}s`, newPhone);
                 const newSnap = await getDoc(newRef);
                 if (newSnap.exists()) {
-                    setIsUpdatingSecurity(false);
                     return alert("This phone number is already registered.");
                 }
                 const newUserData = { ...user, phone: newPhone, pin: newPin, name: profileName, altPhone: profileAltPhone };
@@ -74,32 +69,33 @@ export default function MillPortal({ user, onLogout }) {
         } catch (error) {
             console.error(error);
             alert("Update failed.");
-        } finally {
-            setIsUpdatingSecurity(false);
         }
     };
 
     return (
         <div className="app-container" style={{ display: 'flex' }}>
-            <aside className="sidebar">
+            {/* Sidebar Overlay for Mobile */}
+            {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
+
+            <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
                 <div className="logo">
                     <i className="fa-solid fa-leaf"></i>
                     <span>AgriConnect</span>
                 </div>
                 <nav className="nav-menu">
-                    <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+                    <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-house"></i>
                         <span>Dashboard</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'inventory' ? 'active' : ''}`} onClick={() => setActiveTab('inventory')}>
+                    <a className={`nav-item ${activeTab === 'inventory' ? 'active' : ''}`} onClick={() => { setActiveTab('inventory'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-warehouse"></i>
                         <span>Inventory</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'processing' ? 'active' : ''}`} onClick={() => setActiveTab('processing')}>
+                    <a className={`nav-item ${activeTab === 'processing' ? 'active' : ''}`} onClick={() => { setActiveTab('processing'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-gears"></i>
                         <span>Processing</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveTab('profile')}>
+                    <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { setActiveTab('profile'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-user-gear"></i>
                         <span>Profile</span>
                     </a>
@@ -123,6 +119,9 @@ export default function MillPortal({ user, onLogout }) {
             <main className="main-content">
                 <header className="top-header">
                     <div className="header-left">
+                        <button className="menu-toggle" onClick={() => setIsSidebarOpen(true)}>
+                            <i className="fa-solid fa-bars"></i>
+                        </button>
                         <button className="action-btn back-btn" onClick={onLogout}>
                             <i className="fa-solid fa-arrow-left"></i>
                         </button>

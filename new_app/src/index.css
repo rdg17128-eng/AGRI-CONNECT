@@ -1,32 +1,40 @@
+@import "tailwindcss";
 :root {
-    --bg-deep: #020b08;
-    --bg-dark: #040e0a;
-    --bg-mesh-1: #0a2e1c;
-    --bg-mesh-2: #03140d;
-    --bg-card: rgba(10, 25, 18, 0.55);
-    --bg-card-hover: rgba(18, 44, 32, 0.75);
-    --primary: #00ff8a;
-    --primary-glow: rgba(0, 255, 138, 0.4);
-    --primary-light: #5effbc;
-    --primary-dark: #00b35f;
-    --text-main: #f0f7f3;
-    --text-muted: #8da498;
-    --border-color: rgba(0, 255, 138, 0.15);
-    --border-highlight: rgba(0, 255, 138, 0.45);
+    --bg-deep: #050d09;
+    --bg-dark: #09120d;
+    --bg-mesh-1: #0a2e19; /* Rich forest green */
+    --bg-mesh-2: #24190c; /* Deep earthy gold-brown */
+    --bg-card: rgba(15, 30, 22, 0.6);
+    --bg-card-hover: rgba(28, 48, 36, 0.75);
+    
+    --primary: #10b981; /* Premium leaf green */
+    --primary-glow: rgba(16, 185, 129, 0.35);
+    --primary-light: #34d399;
+    --primary-dark: #047857;
 
-    --success: #00ff88;
-    --warning: #f5b041;
-    --danger: #ff4d4d;
-    --info: #3498db;
+    --accent-gold: #c59b4e; /* Wheat/earth gold-brown */
+    --accent-gold-glow: rgba(197, 155, 78, 0.35);
+    --accent-gold-light: #dfb974;
+    --accent-gold-dark: #9c732c;
+
+    --text-main: #f0f8f4;
+    --text-muted: #8ba699;
+    --border-color: rgba(16, 185, 129, 0.15);
+    --border-highlight: rgba(197, 155, 78, 0.35);
+
+    --success: #10b981;
+    --warning: #c59b4e;
+    --danger: #ef4444;
+    --info: #3b82f6;
 
     --font-heading: 'Outfit', sans-serif;
     --font-body: 'Plus Jakarta Sans', sans-serif;
 
-    /* Distinct Neo-Glass Shadows */
+    /* Distinct Neo-Glass Shadows (Combined Green & Gold Glows) */
     --shadow-sm: inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 2px 4px rgba(0, 0, 0, 0.2);
     --shadow-md: inset 0 1px 1px rgba(255, 255, 255, 0.08), 0 8px 16px rgba(0, 0, 0, 0.4);
     --shadow-lg: inset 0 1px 2px rgba(255, 255, 255, 0.1), 0 16px 32px rgba(0, 0, 0, 0.5);
-    --shadow-neon: 0 0 20px rgba(0, 255, 136, 0.4), 0 0 40px rgba(0, 255, 136, 0.1);
+    --shadow-neon: 0 0 20px rgba(16, 185, 129, 0.3), 0 0 40px rgba(197, 155, 78, 0.2);
 
     --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1020,8 +1028,38 @@ h6 {
 }
 
 /* Responsiveness */
-@media (max-width: 1400px) {
+.menu-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    cursor: pointer;
+    font-size: 1.25rem;
+    transition: var(--transition);
+}
 
+.menu-toggle:hover {
+    background-color: var(--bg-card-hover);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 95;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@media (max-width: 1400px) {
     .market-prices,
     .weather-card,
     .upcoming-tasks {
@@ -1029,29 +1067,79 @@ h6 {
     }
 }
 
+@media (max-width: 1200px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+}
+
 @media (max-width: 1024px) {
     .sidebar {
         transform: translateX(-100%);
-        transition: transform 0.3s ease;
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .sidebar.open {
+        transform: translateX(0);
     }
 
     .main-content {
         margin-left: 0;
     }
+
+    .menu-toggle {
+        display: flex;
+    }
 }
 
 @media (max-width: 768px) {
-
-    .market-prices,
-    .weather-card,
-    .upcoming-tasks {
-        grid-column: span 12;
+    .bento-grid > * {
+        grid-column: span 12 !important;
     }
 
     .welcome-section {
         flex-direction: column;
         align-items: flex-start;
         gap: 1rem;
+    }
+    
+    .role-card {
+        padding: 1.75rem 1.25rem;
+        min-height: auto;
+        border-radius: 1.5rem;
+    }
+
+    .role-icon {
+        width: 65px;
+        height: 65px;
+        font-size: 2.25rem;
+        margin-bottom: 1.25rem;
+        border-radius: 1.25rem;
+    }
+
+    .role-card h2 {
+        font-size: 1.22rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .role-card p {
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 600px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    
+    .top-header {
+        padding: 0 1rem;
+    }
+    
+    .header-actions {
+        gap: 0.5rem;
     }
 }
 
@@ -1217,7 +1305,7 @@ h6 {
     font-size: 5rem;
     font-weight: 900;
     margin-bottom: 1.5rem;
-    background: linear-gradient(135deg, #fff 30%, var(--primary-light) 100%);
+    background: linear-gradient(135deg, #fff 30%, var(--accent-gold) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -1258,10 +1346,10 @@ h6 {
     backdrop-filter: blur(30px);
     -webkit-backdrop-filter: blur(30px);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 3rem;
-    padding: 3rem 2rem;
+    border-radius: 2rem;
+    padding: 2.25rem 1.5rem;
     width: 100%;
-    min-height: 480px;
+    min-height: 380px;
     cursor: pointer;
     transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
     position: relative;
@@ -1274,40 +1362,40 @@ h6 {
 }
 
 .role-card:hover {
-    transform: translateY(-20px) scale(1.03);
-    border-color: var(--primary);
-    box-shadow: 0 60px 120px rgba(0, 0, 0, 0.9), 0 0 40px rgba(0, 255, 138, 0.2);
+    transform: translateY(-15px) scale(1.02);
+    border-color: var(--accent-gold);
+    box-shadow: 0 40px 80px rgba(0, 0, 0, 0.7), 0 0 30px var(--accent-gold-glow);
 }
 
 .role-icon {
-    width: 110px;
-    height: 110px;
-    border-radius: 2.5rem;
+    width: 80px;
+    height: 80px;
+    border-radius: 1.75rem;
     background: rgba(0, 255, 138, 0.08);
     color: var(--primary);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 4rem;
-    margin-bottom: 2.5rem;
+    font-size: 2.75rem;
+    margin-bottom: 1.75rem;
     transition: var(--transition);
 }
 
 .role-card:hover .role-icon {
-    background: var(--primary);
+    background: var(--accent-gold);
     color: #000;
-    box-shadow: 0 0 50px var(--primary-glow);
+    box-shadow: 0 0 30px var(--accent-gold-glow);
 }
 
 .role-card h2 {
-    font-size: 1.75rem;
+    font-size: 1.4rem;
     font-weight: 700;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
     color: var(--text-main);
 }
 
 .role-card p {
-    font-size: 1rem;
+    font-size: 0.92rem;
     color: var(--text-muted);
     line-height: 1.6;
 }

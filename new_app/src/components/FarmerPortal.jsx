@@ -17,6 +17,7 @@ L.Icon.Default.mergeOptions({
 
 export default function FarmerPortal({ user, onLogout }) {
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [isAddCropOpen, setIsAddCropOpen] = useState(false);
 
@@ -61,6 +62,7 @@ export default function FarmerPortal({ user, onLogout }) {
                 if (wData) setWeather(wData);
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedWeatherLocation]);
 
     useEffect(() => {
@@ -94,6 +96,7 @@ export default function FarmerPortal({ user, onLogout }) {
     useEffect(() => {
         fetchCrops();
         fetchOrders();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const fetchOrders = async () => {
@@ -248,38 +251,41 @@ export default function FarmerPortal({ user, onLogout }) {
 
     return (
         <div className="app-container" style={{ display: 'flex' }}>
+            {/* Sidebar Overlay for Mobile */}
+            {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
+
             {/* Sidebar */}
-            <aside className="sidebar">
+            <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
                 <div className="logo">
                     <i className="fa-solid fa-leaf"></i>
                     <span>AgriConnect</span>
                 </div>
                 <nav className="nav-menu">
-                    <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+                    <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-house"></i>
                         <span>Dashboard</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'crops' ? 'active' : ''}`} onClick={() => setActiveTab('crops')}>
+                    <a className={`nav-item ${activeTab === 'crops' ? 'active' : ''}`} onClick={() => { setActiveTab('crops'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-seedling"></i>
                         <span>My Crops</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'market' ? 'active' : ''}`} onClick={() => setActiveTab('market')}>
+                    <a className={`nav-item ${activeTab === 'market' ? 'active' : ''}`} onClick={() => { setActiveTab('market'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-chart-line"></i>
                         <span>Market Prices</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'mills' ? 'active' : ''}`} onClick={() => setActiveTab('mills')}>
+                    <a className={`nav-item ${activeTab === 'mills' ? 'active' : ''}`} onClick={() => { setActiveTab('mills'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-industry"></i>
                         <span>Mills Near Me</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'logistics' ? 'active' : ''}`} onClick={() => setActiveTab('logistics')}>
+                    <a className={`nav-item ${activeTab === 'logistics' ? 'active' : ''}`} onClick={() => { setActiveTab('logistics'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-truck-fast"></i>
                         <span>Logistics</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'finances' ? 'active' : ''}`} onClick={() => setActiveTab('finances')}>
+                    <a className={`nav-item ${activeTab === 'finances' ? 'active' : ''}`} onClick={() => { setActiveTab('finances'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-file-invoice-dollar"></i>
                         <span>Finances</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveTab('profile')}>
+                    <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { setActiveTab('profile'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-user-gear"></i>
                         <span>Profile</span>
                     </a>
@@ -297,6 +303,9 @@ export default function FarmerPortal({ user, onLogout }) {
                 {/* Header */}
                 <header className="top-header">
                     <div className="header-left">
+                        <button className="menu-toggle" onClick={() => setIsSidebarOpen(true)}>
+                            <i className="fa-solid fa-bars"></i>
+                        </button>
                         <button className="action-btn back-btn" onClick={onLogout}>
                             <i className="fa-solid fa-arrow-left"></i>
                         </button>

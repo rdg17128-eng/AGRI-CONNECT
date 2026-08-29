@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
 
 export default function ConsumerPortal({ user, onLogout }) {
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
 
     useEffect(() => {
@@ -13,25 +12,28 @@ export default function ConsumerPortal({ user, onLogout }) {
 
     return (
         <div className="app-container" style={{ display: 'flex' }}>
-            <aside className="sidebar">
+            {/* Sidebar Overlay for Mobile */}
+            {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
+
+            <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
                 <div className="logo">
                     <i className="fa-solid fa-leaf"></i>
                     <span>AgriConnect</span>
                 </div>
                 <nav className="nav-menu">
-                    <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+                    <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-house"></i>
                         <span>Home</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'shop' ? 'active' : ''}`} onClick={() => setActiveTab('shop')}>
+                    <a className={`nav-item ${activeTab === 'shop' ? 'active' : ''}`} onClick={() => { setActiveTab('shop'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-cart-shopping"></i>
                         <span>Shop Fresh</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => setActiveTab('orders')}>
+                    <a className={`nav-item ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => { setActiveTab('orders'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-receipt"></i>
                         <span>My Orders</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveTab('profile')}>
+                    <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { setActiveTab('profile'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-user"></i>
                         <span>Account</span>
                     </a>
@@ -47,6 +49,9 @@ export default function ConsumerPortal({ user, onLogout }) {
             <main className="main-content">
                 <header className="top-header">
                     <div className="header-left">
+                        <button className="menu-toggle" onClick={() => setIsSidebarOpen(true)}>
+                            <i className="fa-solid fa-bars"></i>
+                        </button>
                         <button className="action-btn back-btn" onClick={onLogout}>
                             <i className="fa-solid fa-arrow-left"></i>
                         </button>

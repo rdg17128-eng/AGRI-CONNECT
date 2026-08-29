@@ -6,6 +6,7 @@ import UpdatePricesModal from './UpdatePricesModal';
 
 export default function BuyerPortal({ user, onLogout }) {
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
 
     // Profile States
@@ -17,7 +18,7 @@ export default function BuyerPortal({ user, onLogout }) {
     const [gstNumber, setGstNumber] = useState(user.gstNumber || '');
     const [businessType, setBusinessType] = useState(user.businessType || 'Retailer');
     const [buyingCapacity, setBuyingCapacity] = useState(user.buyingCapacity || '');
-    const [preferredCrops, setPreferredCrops] = useState(user.preferredCrops || []);
+    const [preferredCrops] = useState(user.preferredCrops || []);
 
     // Security States
     const [newPhone, setNewPhone] = useState(user.phone || '');
@@ -39,6 +40,7 @@ export default function BuyerPortal({ user, onLogout }) {
         fetchMills();
         fetchEnquiries();
         return () => clearInterval(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const fetchMills = async () => {
@@ -148,29 +150,32 @@ export default function BuyerPortal({ user, onLogout }) {
 
     return (
         <div className="app-container" style={{ display: 'flex' }}>
-            <aside className="sidebar">
+            {/* Sidebar Overlay for Mobile */}
+            {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
+
+            <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
                 <div className="logo">
                     <i className="fa-solid fa-leaf"></i>
                     <span>AgriConnect</span>
                 </div>
                 <nav className="nav-menu">
-                    <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+                    <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-house"></i>
                         <span>Dashboard</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'browse' ? 'active' : ''}`} onClick={() => setActiveTab('browse')}>
+                    <a className={`nav-item ${activeTab === 'browse' ? 'active' : ''}`} onClick={() => { setActiveTab('browse'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-magnifying-glass"></i>
                         <span>Browse Crops</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => setActiveTab('orders')}>
+                    <a className={`nav-item ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => { setActiveTab('orders'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-box-open"></i>
                         <span>My Purchases</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'enquiries' ? 'active' : ''}`} onClick={() => setActiveTab('enquiries')}>
+                    <a className={`nav-item ${activeTab === 'enquiries' ? 'active' : ''}`} onClick={() => { setActiveTab('enquiries'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-envelope"></i>
                         <span>Enquiries</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveTab('profile')}>
+                    <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { setActiveTab('profile'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-user-gear"></i>
                         <span>Profile</span>
                     </a>
@@ -191,6 +196,9 @@ export default function BuyerPortal({ user, onLogout }) {
             <main className="main-content">
                 <header className="top-header">
                     <div className="header-left">
+                        <button className="menu-toggle" onClick={() => setIsSidebarOpen(true)}>
+                            <i className="fa-solid fa-bars"></i>
+                        </button>
                         <button className="action-btn back-btn" onClick={onLogout}>
                             <i className="fa-solid fa-arrow-left"></i>
                         </button>

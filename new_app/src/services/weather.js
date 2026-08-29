@@ -54,7 +54,7 @@ export async function fetchWeatherByCoords(lat, lon) {
     }
 }
 
-export async function fetchWeatherByCity(cityName) {
+export async function fetchWeatherByCity() {
     try {
         // Simple mock since open-meteo requires coordinates
         // Instead of doing another lookup, let's hardcode Hyderabad coordinates as default
