@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import LandingPage from './components/LandingPage';
 import FarmerPortal from './components/FarmerPortal';
 import BuyerPortal from './components/BuyerPortal';
-import MillPortal from './components/MillPortal';
-import ConsumerPortal from './components/ConsumerPortal';
 import './index.css'; // Make sure the old styling applies
 
 function App() {
@@ -43,14 +41,8 @@ function App() {
       ) : (
         portal === 'farmers' ? (
           <FarmerPortal user={user} onLogout={handleLogout} />
-        ) : portal === 'buyers' ? (
-          <BuyerPortal user={user} onLogout={handleLogout} />
-        ) : portal === 'mills' ? (
-          <MillPortal user={user} onLogout={handleLogout} />
-        ) : portal === 'consumers' ? (
-          <ConsumerPortal user={user} onLogout={handleLogout} />
         ) : (
-          <FarmerPortal user={user} onLogout={handleLogout} />
+          <BuyerPortal user={user} onLogout={handleLogout} />
         )
       )}
     </>

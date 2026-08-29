@@ -19,20 +19,6 @@ export default function LandingPage({ onLogin }) {
             subtitle: 'Source with Confidence',
             desc: 'Access verified produce and manage nationwide procurement.'
         },
-        {
-            id: 'mills',
-            icon: 'fa-industry',
-            title: 'Mill Portal',
-            subtitle: 'Process Perfection',
-            desc: 'Streamline raw material intake and manufacturing workflows.'
-        },
-        {
-            id: 'consumers',
-            icon: 'fa-plate-wheat',
-            title: 'Consumer Portal',
-            subtitle: 'Farm to Fork',
-            desc: 'Buy fresh, chemical-free grains directly from local sources.'
-        },
     ];
 
     return (
