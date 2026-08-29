@@ -1,52 +1,6 @@
 import React, { useState } from 'react';
 import AuthModal from './AuthModal';
 
-// --- Particle Animation Component ---
-// Creates floating, glowing dots to represent seeds, pollen, or data points
-const FloatingParticles = () => {
-    const [particles] = useState(() => {
-        const particleCount = 25;
-        return Array.from({ length: particleCount }).map((_, i) => ({
-            id: i,
-            x: Math.random() * 100, // percentage
-            y: Math.random() * 100, // percentage
-            size: Math.random() * 4 + 2, // 2px to 6px
-            duration: Math.random() * 20 + 10, // 10s to 30s
-            delay: Math.random() * 5, // 0s to 5s
-            opacity: Math.random() * 0.5 + 0.2,
-        }));
-    });
-
-    return (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-            {particles.map((p) => (
-                <div
-                    key={p.id}
-                    className="absolute rounded-full bg-green-200 blur-[1px]"
-                    style={{
-                        left: `${p.x}%`,
-                        top: `${p.y}%`,
-                        width: `${p.size}px`,
-                        height: `${p.size}px`,
-                        opacity: p.opacity,
-                        animation: `floatUp ${p.duration}s linear ${p.delay}s infinite`,
-                        boxShadow: '0 0 10px 2px rgba(134, 239, 172, 0.5)',
-                    }}
-                />
-            ))}
-            <style dangerouslySetInnerHTML={{
-                __html: `
-        @keyframes floatUp {
-          0% { transform: translateY(0) translateX(0) rotate(0deg); opacity: 0; }
-          10% { opacity: 0.8; }
-          90% { opacity: 0.8; }
-          100% { transform: translateY(-100vh) translateX(20px) rotate(360deg); opacity: 0; }
-        }
-      `}} />
-        </div>
-    );
-};
-
 export default function LandingPage({ onLogin }) {
     const [selectedRole, setSelectedRole] = useState(null);
 
@@ -102,9 +56,6 @@ export default function LandingPage({ onLogin }) {
 
                 {/* Vignette effect for dramatic lighting */}
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.6)_100%)]"></div>
-
-                {/* Animated Particles */}
-                <FloatingParticles />
             </div>
 
             <div className="landing-content" style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', padding: '0 2rem' }}>
