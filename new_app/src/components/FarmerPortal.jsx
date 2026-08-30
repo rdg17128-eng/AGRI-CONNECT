@@ -625,7 +625,7 @@ export default function FarmerPortal({ user, onLogout }) {
                             </div>
                         </div>
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 12' }}>
+                            <div className="bento-card span-12">
                                 <div className="card-header">
                                     <h3>Active Crops List</h3>
                                 </div>
@@ -682,7 +682,7 @@ export default function FarmerPortal({ user, onLogout }) {
                             </div>
                         </div>
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 12' }}>
+                            <div className="bento-card span-12">
                                 <div className="card-header">
                                     <h3>Agricultural Commodity Prices</h3>
                                     <div className="search-bar" style={{ maxWidth: '300px' }}>
@@ -741,7 +741,7 @@ export default function FarmerPortal({ user, onLogout }) {
                         </div>
 
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 12' }}>
+                            <div className="bento-card span-12">
                                 <div className="card-header">
                                     <h3>Select Your Crop to Search</h3>
                                 </div>
@@ -766,7 +766,7 @@ export default function FarmerPortal({ user, onLogout }) {
                             </div>
 
                             {selectedCropForSearch && (
-                                <div className="bento-card" style={{ gridColumn: 'span 12', animation: 'fadeIn 0.5s ease-out' }}>
+                                <div className="bento-card span-12" style={{ animation: 'fadeIn 0.5s ease-out' }}>
                                     <div className="card-header">
                                         <h3>Verified Mills buying {selectedCropForSearch.cropName}</h3>
                                         <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Ordered by distance from your plot</span>
@@ -855,14 +855,14 @@ export default function FarmerPortal({ user, onLogout }) {
                         </div>
                         <div className="bento-grid">
                             {orders.length === 0 ? (
-                                <div className="bento-card" style={{ gridColumn: 'span 12', textAlign: 'center', padding: '4rem 0' }}>
+                                <div className="bento-card span-12" style={{ textAlign: 'center', padding: '4rem 0' }}>
                                     <i className="fa-solid fa-truck-moving" style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '1.5rem', opacity: 0.5 }}></i>
                                     <h3>No Logistics Records</h3>
                                     <p style={{ color: 'var(--text-muted)' }}>You haven't booked any transport or received accepted orders yet.</p>
                                 </div>
                             ) : (
                                 orders.map(order => (
-                                    <div key={order.id} className="bento-card" style={{ gridColumn: 'span 12', marginBottom: '1.5rem' }}>
+                                    <div key={order.id} className="bento-card span-12" style={{ marginBottom: '1.5rem' }}>
                                         <div className="card-header" style={{ marginBottom: '1rem' }}>
                                             <div>
                                                 <h3>Delivery to {order.millName}</h3>
@@ -973,7 +973,7 @@ export default function FarmerPortal({ user, onLogout }) {
                             </div>
                         </div>
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 12', padding: '2rem' }}>
+                            <div className="bento-card span-12" style={{ padding: '2rem' }}>
                                 <div className="card-header">
                                     <h3>Payment History</h3>
                                 </div>
@@ -995,7 +995,7 @@ export default function FarmerPortal({ user, onLogout }) {
                             </div>
                         </div>
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 12', maxWidth: '600px', margin: '1rem auto' }}>
+                            <div className="bento-card span-12" style={{ maxWidth: '600px', margin: '1rem auto' }}>
                                 <div className="card-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
                                     <h3>Personal Information</h3>
                                 </div>
@@ -1022,7 +1022,7 @@ export default function FarmerPortal({ user, onLogout }) {
                                 </button>
                             </div>
 
-                            <div className="bento-card" style={{ gridColumn: 'span 12', maxWidth: '600px', margin: '0 auto 1rem auto' }}>
+                            <div className="bento-card span-12" style={{ maxWidth: '600px', margin: '0 auto 1rem auto' }}>
                                 <div className="card-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
                                     <h3>Login & Security</h3>
                                 </div>

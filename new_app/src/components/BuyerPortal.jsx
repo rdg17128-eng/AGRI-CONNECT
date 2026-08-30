@@ -375,7 +375,7 @@ export default function BuyerPortal({ user, onLogout }) {
                         </div>
 
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 8' }}>
+                            <div className="bento-card span-8">
                                 <div className="card-header">
                                     <h3>Recent Market Trends</h3>
                                 </div>
@@ -385,62 +385,7 @@ export default function BuyerPortal({ user, onLogout }) {
                                 </div>
                             </div>
 
-                            <div className="bento-grid" style={{ marginTop: '1.5rem' }}>
-                                <div className="bento-card" style={{ gridColumn: 'span 12' }}>
-                                    <div className="card-header">
-                                        <h3>My Registered Mills</h3>
-                                    </div>
-                                    <div className="table-responsive">
-                                        <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
-                                            <thead>
-                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                    <th style={{ padding: '1rem' }}>Mill Name</th>
-                                                    <th style={{ padding: '1rem' }}>Location</th>
-                                                    <th style={{ padding: '1rem' }}>Buying Crops</th>
-                                                    <th style={{ padding: '1rem' }}>Capability</th>
-                                                    <th style={{ padding: '1rem' }}>Status</th>
-                                                    <th style={{ padding: '1rem' }}>Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {loadingMills ? (
-                                                    <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>Loading mills...</td></tr>
-                                                ) : mills.length === 0 ? (
-                                                    <tr><td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>You haven't added any mills yet.</td></tr>
-                                                ) : mills.map(mill => (
-                                                    <tr key={mill.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                        <td style={{ padding: '1rem', fontWeight: 600 }}>{mill.millName}</td>
-                                                        <td style={{ padding: '1rem', color: 'var(--text-muted)' }}><i className="fa-solid fa-location-dot"></i> {mill.locationName}</td>
-                                                        <td style={{ padding: '1rem' }}>
-                                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                                                {mill.selectedCrops?.map(crop => (
-                                                                    <span key={crop} style={{ fontSize: '0.7rem', padding: '2px 6px', background: 'rgba(0,255,136,0.1)', color: 'var(--primary)', borderRadius: '4px' }}>{crop}</span>
-                                                                ))}
-                                                            </div>
-                                                        </td>
-                                                        <td style={{ padding: '1rem' }}>{mill.capacity} TPD</td>
-                                                        <td style={{ padding: '1rem' }}>
-                                                            <span className={`status-badge ${mill.status === 'pending' ? 'pending' : 'completed'}`} style={{ textTransform: 'capitalize' }}>
-                                                                {mill.status}
-                                                            </span>
-                                                        </td>
-                                                        <td style={{ padding: '1rem' }}>
-                                                            <button
-                                                                className="primary-btn"
-                                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
-                                                                onClick={() => setSelectedMillForPricing(mill)}
-                                                            >
-                                                                <i className="fa-solid fa-tags"></i> Set Prices
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bento-card" style={{ gridColumn: 'span 4' }}>
+                            <div className="bento-card span-4">
                                 <div className="card-header">
                                     <h3>Top Categories</h3>
                                 </div>
@@ -459,6 +404,60 @@ export default function BuyerPortal({ user, onLogout }) {
                                     </div>
                                 </div>
                             </div>
+
+                            <div className="bento-card span-12">
+                                <div className="card-header">
+                                    <h3>My Registered Mills</h3>
+                                </div>
+                                <div className="table-responsive">
+                                    <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                <th style={{ padding: '1rem' }}>Mill Name</th>
+                                                <th style={{ padding: '1rem' }}>Location</th>
+                                                <th style={{ padding: '1rem' }}>Buying Crops</th>
+                                                <th style={{ padding: '1rem' }}>Capability</th>
+                                                <th style={{ padding: '1rem' }}>Status</th>
+                                                <th style={{ padding: '1rem' }}>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {loadingMills ? (
+                                                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>Loading mills...</td></tr>
+                                            ) : mills.length === 0 ? (
+                                                <tr><td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>You haven't added any mills yet.</td></tr>
+                                            ) : mills.map(mill => (
+                                                <tr key={mill.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <td style={{ padding: '1rem', fontWeight: 600 }}>{mill.millName}</td>
+                                                    <td style={{ padding: '1rem', color: 'var(--text-muted)' }}><i className="fa-solid fa-location-dot"></i> {mill.locationName}</td>
+                                                    <td style={{ padding: '1rem' }}>
+                                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                            {mill.selectedCrops?.map(crop => (
+                                                                <span key={crop} style={{ fontSize: '0.7rem', padding: '2px 6px', background: 'rgba(0,255,136,0.1)', color: 'var(--primary)', borderRadius: '4px' }}>{crop}</span>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '1rem' }}>{mill.capacity} TPD</td>
+                                                    <td style={{ padding: '1rem' }}>
+                                                        <span className={`status-badge ${mill.status === 'pending' ? 'pending' : 'completed'}`} style={{ textTransform: 'capitalize' }}>
+                                                            {mill.status}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '1rem' }}>
+                                                        <button
+                                                            className="primary-btn"
+                                                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                                                            onClick={() => setSelectedMillForPricing(mill)}
+                                                        >
+                                                            <i className="fa-solid fa-tags"></i> Set Prices
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -472,7 +471,7 @@ export default function BuyerPortal({ user, onLogout }) {
                             </div>
                         </div>
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 12', textAlign: 'center', padding: '4rem 0' }}>
+                            <div className="bento-card span-12" style={{ textAlign: 'center', padding: '4rem 0' }}>
                                 <i className="fa-solid fa-layer-group" style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '1.5rem', opacity: 0.5 }}></i>
                                 <h3>Connecting to Farms...</h3>
                                 <p style={{ color: 'var(--text-muted)' }}>We are currently syncing with live farmer listings. Check back in a moment.</p>
@@ -490,7 +489,7 @@ export default function BuyerPortal({ user, onLogout }) {
                             </div>
                         </div>
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 12' }}>
+                            <div className="bento-card span-12">
                                 <div className="table-responsive">
                                     <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
                                         <thead>
@@ -523,7 +522,7 @@ export default function BuyerPortal({ user, onLogout }) {
                             </div>
                         </div>
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 12' }}>
+                            <div className="bento-card span-12">
                                 <div className="table-responsive">
                                     <table className="orders-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
                                         <thead>
@@ -595,7 +594,7 @@ export default function BuyerPortal({ user, onLogout }) {
                             </div>
                         </div>
                         <div className="bento-grid">
-                            <div className="bento-card" style={{ gridColumn: 'span 12', maxWidth: '600px', margin: '1rem auto' }}>
+                            <div className="bento-card span-12" style={{ maxWidth: '600px', margin: '1rem auto' }}>
                                 <div className="card-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
                                     <h3>Personal Information</h3>
                                 </div>
@@ -649,7 +648,7 @@ export default function BuyerPortal({ user, onLogout }) {
                                 </button>
                             </div>
 
-                            <div className="bento-card" style={{ gridColumn: 'span 12', maxWidth: '600px', margin: '0 auto 1rem auto' }}>
+                            <div className="bento-card span-12" style={{ maxWidth: '600px', margin: '0 auto 1rem auto' }}>
                                 <div className="card-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
                                     <h3>Login & Security</h3>
                                 </div>

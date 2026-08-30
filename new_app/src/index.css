@@ -1383,26 +1383,14 @@ h6 {
 }
 
 .role-cards {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 2rem;
+    display: flex;
     justify-content: center;
-    max-width: 1400px;
+    flex-wrap: wrap;
+    gap: 2rem;
+    max-width: 1000px;
     width: 100%;
-    margin-top: 4rem;
-}
-
-@media (max-width: 1400px) {
-    .role-cards {
-        grid-template-columns: repeat(2, 1fr);
-        padding: 0 2rem;
-    }
-}
-
-@media (max-width: 768px) {
-    .role-cards {
-        grid-template-columns: 1fr;
-    }
+    margin-top: 3rem;
+    padding: 0 1.5rem;
 }
 
 .role-card {
@@ -1413,6 +1401,7 @@ h6 {
     border-radius: 2rem;
     padding: 2.25rem 1.5rem;
     width: 100%;
+    max-width: 450px;
     min-height: 380px;
     cursor: pointer;
     transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
@@ -1607,5 +1596,25 @@ h6 {
     .modal-content {
         padding: 2rem 1.25rem;
         border-radius: 1.5rem;
+    }
+}
+
+/* Responsive grid span helper classes */
+.span-4 {
+    grid-column: span 4;
+}
+
+.span-8 {
+    grid-column: span 8;
+}
+
+.span-12 {
+    grid-column: span 12;
+}
+
+@media (max-width: 1024px) {
+    .span-4,
+    .span-8 {
+        grid-column: span 12 !important;
     }
 }
