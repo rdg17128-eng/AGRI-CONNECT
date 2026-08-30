@@ -325,7 +325,7 @@ export default function BuyerPortal({ user, onLogout }) {
                     </div>
 
                     <div className="header-actions" style={{ alignItems: 'center' }}>
-                        <div style={{ textAlign: 'right', marginRight: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                        <div className="header-datetime">
                             <div style={{ fontWeight: 600, color: 'var(--text)' }}>
                                 {currentTime.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })}
                             </div>
@@ -605,7 +605,7 @@ export default function BuyerPortal({ user, onLogout }) {
                                     <input type="text" placeholder="Owner/Company Name" value={profileName} onChange={e => setProfileName(e.target.value)} />
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div className="responsive-form-row">
                                     <div>
                                         <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>GST Number</label>
                                         <div className="input-group" style={{ marginBottom: '1.25rem' }}>
@@ -627,7 +627,7 @@ export default function BuyerPortal({ user, onLogout }) {
                                     </div>
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div className="responsive-form-row">
                                     <div>
                                         <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Alt. Contact</label>
                                         <div className="input-group" style={{ marginBottom: '1.5rem' }}>

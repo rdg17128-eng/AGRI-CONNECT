@@ -77,7 +77,7 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
         <div className="auth-modal" style={{ display: 'flex' }}>
             <div className="auth-content">
                 <span className="close-btn" onClick={onClose}><i className="fa-solid fa-xmark"></i></span>
-                <div className="logo landing-logo" style={{ marginBottom: '1.5rem', justifyContent: 'center' }}>
+                <div className="logo modal-logo" style={{ marginBottom: '1.25rem', justifyContent: 'center' }}>
                     <i className="fa-solid fa-leaf"></i>
                     <span>AgriConnect</span>
                 </div>

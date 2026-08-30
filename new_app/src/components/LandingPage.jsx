@@ -22,7 +22,7 @@ export default function LandingPage({ onLogin }) {
     ];
 
     return (
-        <div className="landing-page relative h-screen max-h-screen bg-neutral-900 font-sans text-neutral-50 overflow-hidden selection:bg-green-500 selection:text-white" style={{ height: '100vh', minHeight: '100vh', maxHeight: '100vh', padding: '1.5rem 0', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+        <div className="landing-page relative bg-neutral-900 font-sans text-neutral-50 selection:bg-green-500 selection:text-white">
             {/* ========================================= */}
             {/* BACKGROUND LAYER (The core of the request) */}
             {/* ========================================= */}

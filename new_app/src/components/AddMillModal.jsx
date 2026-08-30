@@ -95,7 +95,7 @@ export default function AddMillModal({ user, onClose, onMillAdded }) {
 
     return (
         <div className="auth-modal" style={{ display: 'flex', zIndex: 1100 }}>
-            <div className="auth-content" style={{ maxWidth: '500px', padding: '2.5rem' }}>
+            <div className="auth-content" style={{ maxWidth: '500px' }}>
                 <span className="close-btn" onClick={onClose}><i className="fa-solid fa-xmark"></i></span>
 
                 <h2 style={{ marginBottom: '0.5rem', color: 'var(--text-main)' }}>Register Your Mill 🏭</h2>

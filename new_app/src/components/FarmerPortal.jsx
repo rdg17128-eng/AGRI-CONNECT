@@ -431,7 +431,7 @@ export default function FarmerPortal({ user, onLogout }) {
                     </div>
 
                     <div className="header-actions" style={{ alignItems: 'center' }}>
-                        <div style={{ textAlign: 'right', marginRight: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                        <div className="header-datetime">
                             <div style={{ fontWeight: 600, color: 'var(--text)' }}>
                                 {currentTime.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })}
                             </div>
@@ -771,7 +771,7 @@ export default function FarmerPortal({ user, onLogout }) {
                                         <h3>Verified Mills buying {selectedCropForSearch.cropName}</h3>
                                         <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Ordered by distance from your plot</span>
                                     </div>
-                                    <div className="mills-list" style={{ marginTop: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                                    <div className="mills-list" style={{ marginTop: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
                                         {isSearchingMills ? (
                                             <div style={{ padding: '2rem', textAlign: 'center', gridColumn: '1/-1' }}>Searching for nearby mills...</div>
                                         ) : nearbyMills.length === 0 ? (

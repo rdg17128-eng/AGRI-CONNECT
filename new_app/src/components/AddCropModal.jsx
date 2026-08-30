@@ -39,16 +39,16 @@ export default function AddCropModal({ onClose, onSaveCrop }) {
             <div className="auth-modal" style={{ display: 'flex' }}>
                 <div className="auth-content">
                     <span className="close-btn" onClick={onClose}><i className="fa-solid fa-xmark"></i></span>
-                    <div className="logo landing-logo" style={{ marginBottom: '1.5rem', justifyContent: 'center' }}>
+                    <div className="logo modal-logo" style={{ marginBottom: '1.25rem', justifyContent: 'center' }}>
                         <i className="fa-solid fa-seedling"></i>
                         <span>Add Crop</span>
                     </div>
 
-                    <h2 style={{ marginBottom: '0.5rem', textAlign: 'center' }}>New Crop Entry</h2>
-                    <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Select your crop from the list below</p>
+                    <h2 style={{ marginBottom: '0.5rem', textAlign: 'center', fontSize: '1.4rem' }}>New Crop Entry</h2>
+                    <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginBottom: '1.25rem', fontSize: '0.85rem' }}>Select your crop from the list below</p>
 
                     <div className="input-group" style={{ marginBottom: '1rem', borderColor: 'var(--primary)' }}>
-                        <select style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', padding: '0.5rem', fontFamily: 'inherit', fontSize: '1rem', color: 'inherit', cursor: 'pointer' }} value={crop} onChange={(e) => setCrop(e.target.value)}>
+                        <select style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', padding: '0', fontFamily: 'inherit', fontSize: '0.95rem', color: 'inherit', cursor: 'pointer' }} value={crop} onChange={(e) => setCrop(e.target.value)}>
                             <option value="" disabled style={{ color: '#000', background: '#fff' }}>Select a Crop</option>
                             <optgroup label="🌾 Cereals / Grains" style={{ color: '#000', background: '#fff' }}>
                                 <option value="Paddy (Rice)" style={{ color: '#000', background: '#fff' }}>Paddy (Rice)</option>
