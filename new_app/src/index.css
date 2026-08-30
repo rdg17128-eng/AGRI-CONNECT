@@ -3,7 +3,7 @@
     --bg-deep: #050d09;
     --bg-dark: #09120d;
     --bg-mesh-1: #0a2e19; /* Rich forest green */
-    --bg-mesh-2: #24190c; /* Deep earthy gold-brown */
+    --bg-mesh-2: #052011; /* Deep forest emerald green */
     --bg-card: rgba(15, 30, 22, 0.6);
     --bg-card-hover: rgba(28, 48, 36, 0.75);
     
@@ -1346,6 +1346,25 @@ h6 {
     }
 }
 
+.landing-page {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    width: 100%;
+}
+
+@media (max-width: 768px) {
+    .landing-page {
+        justify-content: flex-start;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+}
+
 .landing-content {
     text-align: center;
     max-width: 1400px;
@@ -1596,6 +1615,10 @@ h6 {
     .modal-content {
         padding: 2rem 1.25rem;
         border-radius: 1.5rem;
+    }
+
+    .header-datetime {
+        display: none !important;
     }
 }
 
