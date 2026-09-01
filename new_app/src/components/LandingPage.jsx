@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AuthModal from './AuthModal';
+import RolePickerModal from './RolePickerModal';
 import KisanLogo from './KisanLogo';
 
 export default function LandingPage() {
     const [selectedRole, setSelectedRole] = useState(null);
-    const { user, role } = useAuth();
+    const { user, role, needsRoleSelection, assignRoleToGoogleUser } = useAuth();
     const navigate = useNavigate();
+    const { roleId } = useParams();
 
     // If user is already authenticated and has a role, redirect to their portal
     React.useEffect(() => {
@@ -18,8 +20,18 @@ export default function LandingPage() {
                 ? '/buyer/dashboard'
                 : '/transport/dashboard';
             navigate(dest, { replace: true });
+        } else if (user && !role && roleId) {
+            // Auto-assign role from URL parameter
+            assignRoleToGoogleUser(roleId).then(() => {
+                const dest = roleId === 'farmers'
+                    ? '/farmer/dashboard'
+                    : roleId === 'buyers'
+                    ? '/buyer/dashboard'
+                    : '/transport/dashboard';
+                navigate(dest, { replace: true });
+            });
         }
-    }, [user, role, navigate]);
+    }, [user, role, roleId, navigate, assignRoleToGoogleUser]);
 
     const roles = [
         {
@@ -150,6 +162,10 @@ export default function LandingPage() {
                     onClose={() => setSelectedRole(null)}
                     onLoginSuccess={handleLoginSuccess}
                 />
+            )}
+
+            {needsRoleSelection && (
+                <RolePickerModal />
             )}
         </div>
     );

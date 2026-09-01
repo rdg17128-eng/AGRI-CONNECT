@@ -21,16 +21,26 @@ export function AuthProvider({ children }) {
             return;
         }
 
-        // 1. Check if user clicked a specific portal before OAuth
-        // If the user picked a specific portal (e.g. Farmer, Mill, Transporter),
-        // immediately prioritize that portal without asking for role selection!
-        const intendedRole = localStorage.getItem('kisan_intended_role');
+        // 1. Check if user clicked a specific portal before OAuth (from URL or localStorage)
+        let urlRole = null;
+        if (typeof window !== 'undefined') {
+            if (window.location.pathname.startsWith('/login/')) {
+                urlRole = window.location.pathname.split('/login/')[1]?.split(/[?#/]/)[0];
+            }
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('role')) urlRole = params.get('role');
+        }
+        const intendedRole = urlRole || localStorage.getItem('kisan_intended_role');
         let userRole = null;
         let profileData = null;
 
         if (intendedRole) {
             userRole = intendedRole;
-            localStorage.removeItem('kisan_intended_role');
+            try {
+                localStorage.removeItem('kisan_intended_role');
+            } catch (e) {
+                console.warn(e);
+            }
             try {
                 await supabase.auth.updateUser({ data: { role: intendedRole } });
             } catch (uErr) {
@@ -178,10 +188,12 @@ export function AuthProvider({ children }) {
                 localStorage.setItem('kisan_intended_role', intendedRole);
             }
             localStorage.setItem('kisan_auth_origin', window.location.origin);
+            const redirectPath = intendedRole ? `/login/${intendedRole}` : '';
+            const redirectUrl = `${window.location.origin}${redirectPath}`;
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: window.location.origin
+                    redirectTo: redirectUrl
                 }
             });
             if (error) {
