@@ -338,10 +338,16 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
         fetchEnquiriesData();
     };
 
-    // Filter accepted enquiries with QR codes available
+    // Filter accepted enquiries with QR codes available (Must be fully confirmed)
     const acceptedEnquiries = enquiries.filter(e => {
         const s = (e.status || '').toUpperCase();
-        return s === 'ACCEPTED' || s === 'LOAD_RECEIVED';
+        const os = (e.overall_status || '').toUpperCase();
+        if (s === 'LOAD_RECEIVED') return true;
+        if (os === 'CONFIRMED') return true;
+        const hasTransport = Boolean(e.transport_required || e.with_transport);
+        if (!hasTransport && s === 'ACCEPTED') return true;
+        if (hasTransport && s === 'ACCEPTED' && (e.transport_status || '').toUpperCase() === 'ACCEPTED') return true;
+        return false;
     });
 
     // Calculate mill rates suitable for farmer crops, sorted with highest price first
@@ -1006,56 +1012,117 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                 </div>
                             ) : (
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
-                                    {enquiries.map(enq => (
-                                        <div key={enq.id} className="bento-card" style={{ border: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-                                                <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)' }}>
-                                                    {enq.enquiry_code}
-                                                </span>
-                                                <span className="status-badge" style={{
-                                                    background: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : (enq.status || '').toUpperCase() === 'REJECTED' ? 'rgba(239, 68, 68, 0.15)' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
-                                                    color: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'var(--primary)' : (enq.status || '').toUpperCase() === 'REJECTED' ? '#ef4444' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24',
-                                                    textTransform: 'uppercase',
-                                                    padding: '0.2rem 0.6rem',
-                                                    borderRadius: '0.4rem',
-                                                    fontWeight: 700,
-                                                    fontSize: '0.75rem'
-                                                }}>
-                                                    {(enq.status || 'PENDING').toUpperCase()}
-                                                </span>
-                                            </div>
+                                    {enquiries.map(enq => {
+                                        const millAccepted = (enq.mill_status || enq.status || '').toUpperCase() === 'ACCEPTED' || (enq.status || '').toUpperCase() === 'LOAD_RECEIVED';
+                                        const millPending = !millAccepted && (enq.mill_status || enq.status || '').toUpperCase() !== 'REJECTED';
+                                        const millRejected = (enq.mill_status || enq.status || '').toUpperCase() === 'REJECTED';
 
-                                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.85rem' }}>
-                                                <div>Mill: <strong>{enq.mill_name}</strong></div>
-                                                <div>Crop: <strong style={{ color: 'var(--primary)' }}>{enq.crop_name}</strong></div>
-                                                <div>Quantity: <strong>{enq.quantity || (enq.acres * 2)} Tons ({enq.acres} Acres)</strong></div>
-                                                <div>Expected Price: <strong>₹{enq.expected_price || 'Market'}</strong></div>
-                                                <div>Transport: <span>{enq.transport_required ? '✓ Requested' : 'Self Arranged'}</span></div>
-                                                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Sent: {new Date(enq.created_at).toLocaleDateString('en-IN')}</div>
-                                            </div>
+                                        const hasTransport = Boolean(enq.transport_required || enq.with_transport);
+                                        const transportAccepted = (enq.transport_status || '').toUpperCase() === 'ACCEPTED';
+                                        const transportPending = hasTransport && !transportAccepted && (enq.transport_status || '').toUpperCase() !== 'REJECTED';
+                                        const transportRejected = (enq.transport_status || '').toUpperCase() === 'REJECTED';
 
-                                            <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
-                                                {(enq.status || '').toUpperCase() === 'ACCEPTED' || (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? (
-                                                    <button 
-                                                        className="primary-btn" 
-                                                        onClick={() => setSelectedEnquiryForQr(enq)}
-                                                        style={{ width: '100%', justifyContent: 'center', padding: '0.65rem' }}
-                                                    >
-                                                        <i className="fa-solid fa-qrcode"></i>
-                                                        View Verification QR
-                                                    </button>
-                                                ) : (enq.status || '').toUpperCase() === 'REJECTED' ? (
-                                                    <div style={{ textAlign: 'center', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600, padding: '0.35rem 0' }}>
-                                                        <i className="fa-solid fa-circle-xmark"></i> Enquiry Declined by Mill
+                                        const isOverallConfirmed = enq.overall_status === 'CONFIRMED' || (!hasTransport && millAccepted) || (hasTransport && millAccepted && transportAccepted) || (enq.status || '').toUpperCase() === 'LOAD_RECEIVED';
+
+                                        return (
+                                            <div key={enq.id} className="bento-card" style={{ border: isOverallConfirmed ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column' }}>
+                                                {/* Header */}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                                    <div>
+                                                        <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)', fontSize: '1rem' }}>
+                                                            {enq.enquiry_code}
+                                                        </span>
+                                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                            {new Date(enq.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                        </div>
                                                     </div>
-                                                ) : (
-                                                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0.35rem 0' }}>
-                                                        <i className="fa-solid fa-clock"></i> Awaiting Mill Decision
+
+                                                    <span className="status-badge" style={{
+                                                        background: isOverallConfirmed ? 'rgba(16, 185, 129, 0.2)' : millRejected || transportRejected ? 'rgba(239, 68, 68, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                                                        color: isOverallConfirmed ? 'var(--primary)' : millRejected || transportRejected ? '#ef4444' : '#fbbf24',
+                                                        textTransform: 'uppercase',
+                                                        padding: '0.25rem 0.65rem',
+                                                        borderRadius: '0.5rem',
+                                                        fontWeight: 700,
+                                                        fontSize: '0.75rem'
+                                                    }}>
+                                                        {isOverallConfirmed ? '🟢 CONFIRMED' : millRejected || transportRejected ? '🔴 REJECTED' : '🟡 IN PROGRESS'}
+                                                    </span>
+                                                </div>
+
+                                                {/* Body */}
+                                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.45rem', fontSize: '0.85rem' }}>
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>Crop:</span> <strong style={{ color: 'var(--primary)' }}>{enq.crop_name}</strong></div>
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>Quantity:</span> <strong>{enq.quantity || (enq.acres * 2)} Tons ({enq.acres} Acres)</strong></div>
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>Target Mill:</span> <strong>{enq.mill_name}</strong> (~{Number(enq.distance || 35).toFixed(1)} km)</div>
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>Expected Price:</span> <strong style={{ color: 'var(--accent-gold)' }}>₹{enq.expected_price || 'Market'} / Quintal</strong></div>
+                                                    
+                                                    {/* Transport Logistics Box */}
+                                                    <div style={{ background: hasTransport ? 'rgba(16, 185, 129, 0.05)' : 'rgba(0, 0, 0, 0.25)', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: hasTransport ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(255, 255, 255, 0.06)', marginTop: '0.3rem' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: hasTransport ? '0.35rem' : 0 }}>
+                                                            <span style={{ fontWeight: 600, color: hasTransport ? 'var(--primary)' : 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                                <i className="fa-solid fa-truck" style={{ marginRight: '0.3rem' }}></i>
+                                                                {hasTransport ? 'Logistics Requested' : 'Self Arranged by Farmer'}
+                                                            </span>
+                                                            {hasTransport && (
+                                                                <span style={{ fontSize: '0.72rem', color: transportAccepted ? 'var(--primary)' : '#fbbf24', fontWeight: 700 }}>
+                                                                    {transportAccepted ? 'Driver Confirmed ✅' : 'Driver Pending ⏳'}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {hasTransport && (
+                                                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
+                                                                <div>Driver: <strong style={{ color: '#fff' }}>{enq.driver_name || 'Assigned Driver'}</strong></div>
+                                                                <div>Vehicle: <strong style={{ color: '#fff' }}>{enq.vehicle_number || enq.vehicle_type || 'Truck'}</strong></div>
+                                                                <div>Date: <strong style={{ color: '#fff' }}>{enq.transport_date || enq.pickup_date || 'Flexible'}</strong></div>
+                                                                <div>Est. Cost: <strong style={{ color: 'var(--accent-gold)' }}>₹{enq.estimated_transport_cost?.toLocaleString() || 'Calculated'}</strong></div>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
+
+                                                    {/* Status Dual Breakdown */}
+                                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.2rem', fontSize: '0.75rem' }}>
+                                                        <div style={{ flex: 1, padding: '0.35rem 0.5rem', background: 'rgba(0,0,0,0.3)', borderRadius: '0.4rem', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.68rem' }}>Mill Decision</span>
+                                                            <strong style={{ color: millAccepted ? 'var(--primary)' : millRejected ? '#ef4444' : '#fbbf24' }}>
+                                                                {millAccepted ? '✅ Accepted' : millRejected ? '❌ Declined' : '⏳ Pending'}
+                                                            </strong>
+                                                        </div>
+                                                        {hasTransport && (
+                                                            <div style={{ flex: 1, padding: '0.35rem 0.5rem', background: 'rgba(0,0,0,0.3)', borderRadius: '0.4rem', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                                                <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.68rem' }}>Driver Decision</span>
+                                                                <strong style={{ color: transportAccepted ? 'var(--primary)' : transportRejected ? '#ef4444' : '#fbbf24' }}>
+                                                                    {transportAccepted ? '✅ Accepted' : transportRejected ? '❌ Declined' : '⏳ Pending'}
+                                                                </strong>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Footer Action */}
+                                                <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+                                                    {isOverallConfirmed ? (
+                                                        <button 
+                                                            className="primary-btn" 
+                                                            onClick={() => setSelectedEnquiryForQr(enq)}
+                                                            style={{ width: '100%', justifyContent: 'center', padding: '0.65rem', fontWeight: 800 }}
+                                                        >
+                                                            <i className="fa-solid fa-qrcode"></i>
+                                                            View Verification QR
+                                                        </button>
+                                                    ) : millRejected || transportRejected ? (
+                                                        <div style={{ textAlign: 'center', color: '#ef4444', fontSize: '0.82rem', fontWeight: 600, padding: '0.35rem 0' }}>
+                                                            <i className="fa-solid fa-circle-xmark"></i> {millRejected ? 'Declined by Mill' : 'Declined by Driver'}
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ textAlign: 'center', color: '#fbbf24', fontSize: '0.8rem', padding: '0.35rem 0', fontWeight: 600, background: 'rgba(234, 179, 8, 0.08)', borderRadius: '0.4rem' }}>
+                                                            <i className="fa-solid fa-hourglass-half"></i> {millAccepted ? 'Mill Accepted • Waiting for Driver' : transportAccepted ? 'Driver Accepted • Waiting for Mill' : 'Awaiting Confirmation'}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

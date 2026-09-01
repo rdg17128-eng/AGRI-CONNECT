@@ -147,7 +147,12 @@ export default function TransportPortal({ user: propUser, onLogout }) {
         return () => unsub();
     }, [providerInfo.phone]);
 
-    // Smart truck matching: Only show available requests where truck capacity >= required capacity
+    // Smart truck matching & Assigned requests
+    const assignedRequests = transportRequests.filter(req => 
+        (req.assigned_provider_id === providerInfo.phone || req.assigned_provider_phone === providerInfo.phone) &&
+        (req.status === 'ASSIGNED' || req.transport_status === 'PENDING')
+    );
+
     const suitableRequests = transportRequests.filter(req => {
         const reqCap = Number(req.required_capacity || req.quantity || 10);
         return providerInfo.capacity >= reqCap && (req.status === 'SEARCHING' || req.status === 'QUOTED');
@@ -155,17 +160,39 @@ export default function TransportPortal({ user: propUser, onLogout }) {
 
     const activeTrips = transportRequests.filter(req => 
         (req.assigned_provider_id === providerInfo.phone || req.assigned_provider_phone === providerInfo.phone) &&
-        req.status !== 'DELIVERED'
+        req.status !== 'DELIVERED' && req.status !== 'REJECTED' && req.transport_status !== 'REJECTED'
     );
 
     const allFleetActiveTrips = transportRequests.filter(req => 
-        req.status && req.status !== 'DELIVERED' && req.status !== 'SEARCHING' && req.status !== 'QUOTED'
+        req.status && req.status !== 'DELIVERED' && req.status !== 'SEARCHING' && req.status !== 'QUOTED' && req.status !== 'REJECTED'
     );
 
     const completedTrips = transportRequests.filter(req => 
         (req.assigned_provider_id === providerInfo.phone || req.assigned_provider_phone === providerInfo.phone) &&
         req.status === 'DELIVERED'
     );
+
+    const handleAcceptDirectLoad = async (req) => {
+        try {
+            await kisanService.acceptTransportLoad(req.enquiry_code || req.enquiry_id, providerInfo);
+            refreshData();
+            setActiveTab('active');
+        } catch (err) {
+            console.error("Error accepting load:", err);
+            alert("Failed to accept load. Please try again.");
+        }
+    };
+
+    const handleRejectDirectLoad = async (req) => {
+        const reason = window.prompt("Reason for declining this load (optional):", "Vehicle unavailable / route conflict");
+        if (reason === null) return;
+        try {
+            await kisanService.rejectTransportLoad(req.enquiry_code || req.enquiry_id, reason);
+            refreshData();
+        } catch (err) {
+            console.error("Error rejecting load:", err);
+        }
+    };
 
     const handleSendQuote = (e) => {
         e.preventDefault();
@@ -383,9 +410,9 @@ export default function TransportPortal({ user: propUser, onLogout }) {
                         <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                                 <div>
-                                    <h2 style={{ margin: 0, fontSize: '1.5rem' }}>Available Transport Requests</h2>
+                                    <h2 style={{ margin: 0, fontSize: '1.5rem' }}>Transport Enquiries & Requests</h2>
                                     <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
-                                        Verified farmer loads requiring haulage matching your truck capacity
+                                        Direct farmer load assignments and open haulage matching your {providerInfo.capacity}T vehicle
                                     </p>
                                 </div>
                                 <button className="action-btn" onClick={refreshData}>
@@ -393,12 +420,85 @@ export default function TransportPortal({ user: propUser, onLogout }) {
                                 </button>
                             </div>
 
-                            {suitableRequests.length === 0 ? (
+                            {/* SECTION 1: DIRECT ASSIGNED LOAD REQUESTS */}
+                            {assignedRequests.length > 0 && (
+                                <div style={{ marginBottom: '2rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--primary)', fontWeight: 800, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        <i className="fa-solid fa-bell"></i> Assigned to You ({assignedRequests.length})
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
+                                        {assignedRequests.map(req => (
+                                            <div key={req.id || req.transport_code} className="bento-card" style={{ border: '2px solid rgba(16, 185, 129, 0.4)', display: 'flex', flexDirection: 'column', background: 'rgba(16, 185, 129, 0.04)' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                                    <div>
+                                                        <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)', fontSize: '1rem' }}>
+                                                            {req.enquiry_code || req.transport_code}
+                                                        </span>
+                                                        <div style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 700 }}>
+                                                            DIRECT DRIVER ASSIGNMENT
+                                                        </div>
+                                                    </div>
+                                                    <span className="status-badge" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#fbbf24', padding: '0.2rem 0.6rem', fontSize: '0.75rem', fontWeight: 700 }}>
+                                                        AWAITING ACCEPTANCE
+                                                    </span>
+                                                </div>
+
+                                                <div style={{ marginBottom: '1rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.45rem', fontSize: '0.85rem' }}>
+                                                    <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.2rem', color: 'var(--text-main)' }}>
+                                                        {req.crop_name} • <span style={{ color: 'var(--primary)' }}>{req.quantity} Tons</span>
+                                                    </h3>
+
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>👨‍🌾 Farmer:</span> <strong>{req.farmer_name} ({req.farmer_phone})</strong></div>
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>📍 Pickup:</span> <strong>{req.pickup_address}</strong></div>
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>🏭 Destination:</span> <strong>{req.delivery_address} ({req.mill_name})</strong></div>
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>🗓️ Transport Date:</span> <strong style={{ color: 'var(--primary)' }}>{req.pickup_date || 'Prompt'}</strong></div>
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>🚛 Truck:</span> <strong style={{ fontFamily: 'monospace' }}>{providerInfo.vehicle_number}</strong> ({providerInfo.capacity}T {providerInfo.vehicle_type})</div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', marginTop: '0.35rem' }}>
+                                                        <span>Distance: <strong>~{req.distance || 35} KM</strong></span>
+                                                        <span>Agreed Rate: <strong>₹{providerInfo.price_per_km || 35}/KM</strong></span>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Estimated Earnings:</span>
+                                                        <strong style={{ fontSize: '1.2rem', color: 'var(--accent-gold)' }}>₹{Number(req.final_price || Math.round((req.distance || 35) * (providerInfo.price_per_km || 35))).toLocaleString()}</strong>
+                                                    </div>
+
+                                                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                                        <button 
+                                                            className="text-btn" 
+                                                            onClick={() => handleRejectDirectLoad(req)}
+                                                            style={{ flex: 1, justifyContent: 'center', padding: '0.65rem', color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '0.5rem' }}
+                                                        >
+                                                            <i className="fa-solid fa-xmark" style={{ marginRight: '0.3rem' }}></i> Reject
+                                                        </button>
+                                                        <button 
+                                                            className="primary-btn" 
+                                                            onClick={() => handleAcceptDirectLoad(req)}
+                                                            style={{ flex: 1.5, justifyContent: 'center', padding: '0.65rem', fontWeight: 800 }}
+                                                        >
+                                                            <i className="fa-solid fa-truck-fast"></i> Accept Load
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SECTION 2: OPEN FLEET REQUESTS */}
+                            <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text-main)' }}>
+                                Open Fleet Load Inquiries ({suitableRequests.length})
+                            </div>
+
+                            {suitableRequests.length === 0 && assignedRequests.length === 0 ? (
                                 <div className="bento-card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
                                     <i className="fa-solid fa-truck-clock fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
                                     <h3>No Active Requests Matching Your Capacity</h3>
                                     <p style={{ color: 'var(--text-muted)', maxWidth: '500px', margin: '0.5rem auto 0' }}>
-                                        New transport requests generated from accepted farmer enquiries will automatically appear here.
+                                        New transport requests generated from farmer enquiries will automatically appear here.
                                     </p>
                                 </div>
                             ) : (

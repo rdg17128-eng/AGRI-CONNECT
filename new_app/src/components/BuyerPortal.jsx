@@ -616,153 +616,176 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                 </div>
                             ) : (
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.25rem' }}>
-                                    {filteredEnquiries.map(enq => (
-                                        <div key={enq.id} className="bento-card" style={{ border: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column' }}>
-                                            {/* Header */}
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '1rem' }}>
-                                                <div>
-                                                    <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)', fontSize: '1rem' }}>
-                                                        {enq.enquiry_code}
-                                                    </span>
-                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                                        {new Date(enq.created_at).toLocaleDateString('en-IN')}
+                                    {filteredEnquiries.map(enq => {
+                                        const millAccepted = (enq.mill_status || enq.status || '').toUpperCase() === 'ACCEPTED' || (enq.status || '').toUpperCase() === 'LOAD_RECEIVED';
+                                        const millPending = !millAccepted && (enq.mill_status || enq.status || '').toUpperCase() !== 'REJECTED';
+                                        const millRejected = (enq.mill_status || enq.status || '').toUpperCase() === 'REJECTED';
+
+                                        const hasTransport = Boolean(enq.transport_required || enq.with_transport);
+                                        const transportAccepted = (enq.transport_status || '').toUpperCase() === 'ACCEPTED';
+                                        const transportPending = hasTransport && !transportAccepted && (enq.transport_status || '').toUpperCase() !== 'REJECTED';
+                                        const transportRejected = (enq.transport_status || '').toUpperCase() === 'REJECTED';
+
+                                        const isOverallConfirmed = enq.overall_status === 'CONFIRMED' || (!hasTransport && millAccepted) || (hasTransport && millAccepted && transportAccepted);
+
+                                        return (
+                                            <div key={enq.id} className="bento-card" style={{ border: isOverallConfirmed ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column' }}>
+                                                {/* Header */}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '1rem' }}>
+                                                    <div>
+                                                        <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)', fontSize: '1rem' }}>
+                                                            {enq.enquiry_code}
+                                                        </span>
+                                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                            {new Date(enq.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                        </div>
                                                     </div>
-                                                </div>
 
-                                                <span className="status-badge" style={{
-                                                    background: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : (enq.status || '').toUpperCase() === 'REJECTED' ? 'rgba(239, 68, 68, 0.15)' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
-                                                    color: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'var(--primary)' : (enq.status || '').toUpperCase() === 'REJECTED' ? '#ef4444' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24',
-                                                    padding: '0.25rem 0.65rem',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: 700,
-                                                    borderRadius: '0.5rem',
-                                                    textTransform: 'uppercase'
-                                                }}>
-                                                    {(enq.status || 'PENDING').toUpperCase()}
-                                                </span>
-                                            </div>
-
-                                            {/* Body */}
-                                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Farmer:</span>
-                                                    <strong>{enq.farmer_name} ({enq.farmer_phone})</strong>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Crop:</span>
-                                                    <strong style={{ color: 'var(--primary)' }}>{enq.crop_name}</strong>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Quantity & Acres:</span>
-                                                    <strong>{enq.quantity || (enq.acres * 2)} Tons • {enq.acres} Acres</strong>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Farm Location:</span>
-                                                    <span>{enq.farmer_location_name || 'Coordinates Listed'}</span>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Distance:</span>
-                                                    <span>~{Number(enq.distance || 35).toFixed(1)} km</span>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Offered Price:</span>
-                                                    <strong style={{ color: 'var(--accent-gold)' }}>₹{enq.offered_price || enq.expected_price || 'Market Rate'}</strong>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Transport:</span>
-                                                    <span style={{ color: enq.transport_required ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600 }}>
-                                                        {enq.transport_required ? `Yes (${enq.vehicle_capacity || '10 Ton'} ${enq.vehicle_type || 'Truck'})` : 'No (Self Arranged)'}
-                                                    </span>
-                                                </div>
-
-                                                {enq.message && (
-                                                    <div style={{ 
-                                                        background: 'rgba(16, 185, 129, 0.08)', 
-                                                        border: '1px solid rgba(16, 185, 129, 0.25)', 
-                                                        padding: '0.65rem 0.85rem', 
-                                                        borderRadius: '0.6rem', 
-                                                        marginTop: '0.5rem' 
+                                                    <span className="status-badge" style={{
+                                                        background: isOverallConfirmed ? 'rgba(16, 185, 129, 0.2)' : millRejected || transportRejected ? 'rgba(239, 68, 68, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                                                        color: isOverallConfirmed ? 'var(--primary)' : millRejected || transportRejected ? '#ef4444' : '#fbbf24',
+                                                        padding: '0.25rem 0.65rem',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 700,
+                                                        borderRadius: '0.5rem',
+                                                        textTransform: 'uppercase'
                                                     }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary)', fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem', letterSpacing: '0.5px' }}>
-                                                            <i className="fa-solid fa-message"></i> FARMER MESSAGE / TERMS:
-                                                        </div>
-                                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontStyle: 'italic', wordBreak: 'break-word', lineHeight: 1.4 }}>
-                                                            "{enq.message}"
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
+                                                        {isOverallConfirmed ? '🟢 CONFIRMED' : millRejected || transportRejected ? '🔴 REJECTED' : '🟡 IN PROGRESS'}
+                                                    </span>
+                                                </div>
 
-                                            {/* Footer Actions */}
-                                            <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '0.6rem' }}>
-                                                {(enq.status || '').toUpperCase() === 'PENDING' ? (
-                                                    <>
-                                                        <button 
-                                                            className="text-btn" 
-                                                            onClick={() => handleRejectEnquiry(enq)}
-                                                            style={{ flex: 1, justifyContent: 'center', padding: '0.65rem', color: 'var(--danger)' }}
-                                                        >
-                                                            <i className="fa-solid fa-xmark" style={{ marginRight: '0.35rem' }}></i>
-                                                            Reject
-                                                        </button>
-                                                        <button 
-                                                            className="primary-btn" 
-                                                            onClick={() => handleAcceptEnquiry(enq)}
-                                                            style={{ flex: 1.5, justifyContent: 'center', padding: '0.65rem' }}
-                                                        >
-                                                            <i className="fa-solid fa-circle-check"></i>
-                                                            Accept Enquiry
-                                                        </button>
-                                                    </>
-                                                ) : (enq.status || '').toUpperCase() === 'ACCEPTED' ? (
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 600 }}>
-                                                            <i className="fa-solid fa-circle-check"></i>
-                                                            <span>Accepted • Ready for Gate Delivery</span>
+                                                {/* Body Details */}
+                                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span style={{ color: 'var(--text-muted)' }}>Farmer:</span>
+                                                        <strong>{enq.farmer_name} ({enq.farmer_phone})</strong>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span style={{ color: 'var(--text-muted)' }}>Crop:</span>
+                                                        <strong style={{ color: 'var(--primary)' }}>{enq.crop_name}</strong>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span style={{ color: 'var(--text-muted)' }}>Quantity & Acreage:</span>
+                                                        <strong>{enq.quantity || (enq.acres * 2)} Tons • {enq.acres} Acres</strong>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span style={{ color: 'var(--text-muted)' }}>Farm Location:</span>
+                                                        <span>{enq.farmer_location_name || 'Farm Plot'} (~{Number(enq.distance || 35).toFixed(1)} km)</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span style={{ color: 'var(--text-muted)' }}>Offered Price:</span>
+                                                        <strong style={{ color: 'var(--accent-gold)' }}>₹{enq.offered_price || enq.expected_price || 'Market Rate'}/Q</strong>
+                                                    </div>
+
+                                                    {/* Transport Logistics Box */}
+                                                    <div style={{ background: hasTransport ? 'rgba(16, 185, 129, 0.05)' : 'rgba(0, 0, 0, 0.25)', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: hasTransport ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(255, 255, 255, 0.06)', marginTop: '0.3rem' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: hasTransport ? '0.35rem' : 0 }}>
+                                                            <span style={{ fontWeight: 600, color: hasTransport ? 'var(--primary)' : 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                                <i className="fa-solid fa-truck" style={{ marginRight: '0.3rem' }}></i>
+                                                                {hasTransport ? 'Logistics Requested' : 'Self Arranged by Farmer'}
+                                                            </span>
+                                                            {hasTransport && (
+                                                                <span style={{ fontSize: '0.72rem', color: transportAccepted ? 'var(--primary)' : '#fbbf24', fontWeight: 700 }}>
+                                                                    {transportAccepted ? 'Driver Confirmed ✅' : 'Driver Pending ⏳'}
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                        {hasTransport && (
+                                                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
+                                                                <div>Driver: <strong style={{ color: '#fff' }}>{enq.driver_name || 'Assigned Driver'}</strong></div>
+                                                                <div>Vehicle: <strong style={{ color: '#fff' }}>{enq.vehicle_number || enq.vehicle_type || 'Truck'}</strong></div>
+                                                                <div>Date: <strong style={{ color: '#fff' }}>{enq.transport_date || enq.pickup_date || 'Flexible'}</strong></div>
+                                                                <div>Transport Cost: <strong style={{ color: 'var(--accent-gold)' }}>₹{enq.estimated_transport_cost?.toLocaleString() || 'Calculated'}</strong></div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Status Dual Breakdown */}
+                                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.2rem', fontSize: '0.75rem' }}>
+                                                        <div style={{ flex: 1, padding: '0.35rem 0.5rem', background: 'rgba(0,0,0,0.3)', borderRadius: '0.4rem', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.68rem' }}>Mill Decision</span>
+                                                            <strong style={{ color: millAccepted ? 'var(--primary)' : millRejected ? '#ef4444' : '#fbbf24' }}>
+                                                                {millAccepted ? '✅ Accepted' : millRejected ? '❌ Rejected' : '⏳ Pending'}
+                                                            </strong>
+                                                        </div>
+                                                        {hasTransport && (
+                                                            <div style={{ flex: 1, padding: '0.35rem 0.5rem', background: 'rgba(0,0,0,0.3)', borderRadius: '0.4rem', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                                                <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.68rem' }}>Transporter Decision</span>
+                                                                <strong style={{ color: transportAccepted ? 'var(--primary)' : transportRejected ? '#ef4444' : '#fbbf24' }}>
+                                                                    {transportAccepted ? '✅ Accepted' : transportRejected ? '❌ Rejected' : '⏳ Pending'}
+                                                                </strong>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {enq.farmer_message && enq.farmer_message !== 'I am ready to supply the crop on the selected date.' && (
+                                                        <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', marginTop: '0.25rem' }}>
+                                                            <div style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 700 }}>FARMER NOTE:</div>
+                                                            <div style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>"{enq.farmer_message}"</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Footer Actions */}
+                                                <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '0.6rem' }}>
+                                                    {millPending ? (
+                                                        <>
                                                             <button 
-                                                                className="action-btn" 
-                                                                onClick={() => setIsQrScannerOpen(true)}
-                                                                style={{ padding: '0.5rem 0.8rem', fontSize: '0.8rem', background: 'rgba(255, 255, 255, 0.08)' }}
+                                                                className="text-btn" 
+                                                                onClick={() => handleRejectEnquiry(enq)}
+                                                                style={{ flex: 1, justifyContent: 'center', padding: '0.65rem', color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '0.5rem' }}
                                                             >
-                                                                <i className="fa-solid fa-qrcode"></i>
-                                                                Scan QR
+                                                                <i className="fa-solid fa-xmark" style={{ marginRight: '0.35rem' }}></i>
+                                                                Reject
                                                             </button>
                                                             <button 
                                                                 className="primary-btn" 
-                                                                onClick={async () => {
-                                                                    const targetMill = mills.find(m => m.id === enq.mill_id) || activeMill;
-                                                                    await kisanService.acceptLoad(enq.enquiry_code || enq.id, targetMill);
-                                                                    await refreshAllData();
-                                                                }}
-                                                                style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem' }}
+                                                                onClick={() => handleAcceptEnquiry(enq)}
+                                                                style={{ flex: 1.5, justifyContent: 'center', padding: '0.65rem', fontWeight: 700 }}
                                                             >
                                                                 <i className="fa-solid fa-circle-check"></i>
-                                                                Accept Load
+                                                                Accept Enquiry
                                                             </button>
+                                                        </>
+                                                    ) : millAccepted ? (
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 600 }}>
+                                                                <i className="fa-solid fa-circle-check"></i>
+                                                                <span>{isOverallConfirmed ? 'Confirmed • Ready for Gate QR' : 'Mill Approved • Waiting for Driver'}</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                                <button 
+                                                                    className="action-btn" 
+                                                                    onClick={() => setIsQrScannerOpen(true)}
+                                                                    style={{ padding: '0.5rem 0.8rem', fontSize: '0.8rem', background: 'rgba(255, 255, 255, 0.08)' }}
+                                                                >
+                                                                    <i className="fa-solid fa-qrcode"></i>
+                                                                    Scan QR
+                                                                </button>
+                                                                <button 
+                                                                    className="primary-btn" 
+                                                                    onClick={async () => {
+                                                                        const targetMill = mills.find(m => m.id === enq.mill_id) || activeMill;
+                                                                        await kisanService.acceptLoad(enq.enquiry_code || enq.id, targetMill);
+                                                                        await refreshAllData();
+                                                                    }}
+                                                                    style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem' }}
+                                                                >
+                                                                    <i className="fa-solid fa-circle-check"></i>
+                                                                    Receive Load
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ) : (enq.status || '').toUpperCase() === 'REJECTED' ? (
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                    ) : (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600 }}>
                                                             <i className="fa-solid fa-circle-xmark"></i>
-                                                            <span>Enquiry Rejected / Declined</span>
+                                                            <span>Enquiry Declined</span>
                                                         </div>
-                                                        {enq.reject_reason && (
-                                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(239,68,68,0.1)', padding: '0.2rem 0.5rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.2)' }}>
-                                                                {enq.reject_reason}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', width: '100%', textAlign: 'center', padding: '0.35rem 0' }}>
-                                                        Status: <strong style={{ color: 'var(--text-main)' }}>{(enq.status || '').toUpperCase()}</strong>
-                                                    </div>
-                                                )}
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
