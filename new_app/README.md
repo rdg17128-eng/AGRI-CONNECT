@@ -1,8 +1,8 @@
-# AgriConnect Frontend App
+# KisanConnect Frontend App
 
-This is the React + Vite frontend application for **AgriConnect**.
+This is the React + Vite frontend application for **KisanConnect**.
 
-For full project details, project idea, theme explanation, and overall repository setup, please refer to the primary repository documentation:
+For full project details, architecture, QR verification flow, transport matching workflow, and overall repository setup, please refer to the primary repository documentation:
 
 👉 **[Primary Repository README.md](../README.md)**
 
@@ -19,4 +19,8 @@ From this directory (`new_app`):
 2. **Start development server:**
    ```bash
    npm run dev
+   ```
+3. **Build for production:**
+   ```bash
+   npm run build
    ```

@@ -1,0 +1,814 @@
+import { supabase } from '../utils/supabase';
+
+// Local storage backup keys
+const STORAGE_KEYS = {
+    ENQUIRIES: 'kisan_enquiries',
+    LOADS: 'kisan_loads',
+    TRANSPORT_REQUESTS: 'kisan_transport_requests',
+    TRANSPORT_QUOTES: 'kisan_transport_quotes',
+    TRANSPORT_PROVIDERS: 'kisan_transport_providers',
+    NOTIFICATIONS: 'kisan_notifications'
+};
+
+// Seed initial default transport providers if none exist
+const DEFAULT_PROVIDERS = [
+    {
+        phone: '9876500001',
+        pin: '1234',
+        name: 'Kisan Gati Logistics',
+        vehicle_number: 'TS 09 EA 4421',
+        vehicle_type: 'Truck',
+        capacity: 15,
+        price_per_km: 42,
+        rating: 4.9,
+        availability: 'AVAILABLE',
+        current_location_name: 'Warangal Agri Hub',
+        service_area: 'Telangana & AP'
+    },
+    {
+        phone: '9876500002',
+        pin: '1234',
+        name: 'Balaji Agro Freight',
+        vehicle_number: 'TS 08 UB 7712',
+        vehicle_type: 'Mini Truck',
+        capacity: 5,
+        price_per_km: 28,
+        rating: 4.8,
+        availability: 'AVAILABLE',
+        current_location_name: 'Karimnagar Bypass',
+        service_area: 'North Telangana'
+    },
+    {
+        phone: '9876500003',
+        pin: '1234',
+        name: 'Annapurna Heavy Haulers',
+        vehicle_number: 'AP 16 TZ 9980',
+        vehicle_type: 'Lorry',
+        capacity: 25,
+        price_per_km: 65,
+        rating: 5.0,
+        availability: 'AVAILABLE',
+        current_location_name: 'Khammam Mandi',
+        service_area: 'South India Express'
+    },
+    {
+        phone: '9876500004',
+        pin: '1234',
+        name: 'Gramin Kisan Express',
+        vehicle_number: 'TS 07 TC 1109',
+        vehicle_type: 'Truck',
+        capacity: 10,
+        price_per_km: 35,
+        rating: 4.7,
+        availability: 'AVAILABLE',
+        current_location_name: 'Nizamabad Yard',
+        service_area: 'Telangana State'
+    }
+];
+
+function getLocal(key, defaultValue = []) {
+    try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : defaultValue;
+    } catch {
+        return defaultValue;
+    }
+}
+
+function setLocal(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+        console.error("Local storage error:", e);
+    }
+}
+
+// Haversine Distance in Kilometers
+export function calculateDistance(lat1, lon1, lat2, lon2) {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+    const R = 6371; // km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c * 10) / 10;
+}
+
+// Generate Unique Permanent Enquiry ID: KC-2026-000123
+export function generateEnquiryId() {
+    const year = new Date().getFullYear();
+    const existing = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+    const count = existing.length + 1;
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const padded = String(count).padStart(3, '0') + randomSuffix;
+    return `KC-${year}-${padded.slice(0, 6)}`;
+}
+
+// Generate Unique Transport Request ID: TR-2026-000045
+export function generateTransportId() {
+    const year = new Date().getFullYear();
+    const existing = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
+    const count = existing.length + 1;
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const padded = String(count).padStart(3, '0') + randomSuffix;
+    return `TR-${year}-${padded.slice(0, 6)}`;
+}
+
+class KisanService {
+    constructor() {
+        this.listeners = [];
+        // Ensure default transport providers initialized
+        const providers = getLocal(STORAGE_KEYS.TRANSPORT_PROVIDERS, []);
+        if (providers.length === 0) {
+            setLocal(STORAGE_KEYS.TRANSPORT_PROVIDERS, DEFAULT_PROVIDERS);
+        }
+        this.setupRealtime();
+    }
+
+    subscribe(callback) {
+        this.listeners.push(callback);
+        return () => {
+            this.listeners = this.listeners.filter(l => l !== callback);
+        };
+    }
+
+    notify(event, payload) {
+        this.listeners.forEach(cb => {
+            try { cb(event, payload); } catch (e) { console.error("Listener error:", e); }
+        });
+    }
+
+    setupRealtime() {
+        try {
+            if (!supabase || !supabase.channel) return;
+            const channel = supabase.channel('kisan_realtime_channel');
+            channel
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'enquiries' }, payload => {
+                    this.notify('enquiries_changed', payload);
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, payload => {
+                    this.notify('transport_changed', payload);
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'loads' }, payload => {
+                    this.notify('loads_changed', payload);
+                })
+                .subscribe();
+        } catch (e) {
+            console.warn("Realtime setup skipped:", e);
+        }
+    }
+
+    // ==========================================
+    // NOTIFICATIONS
+    // ==========================================
+    addNotification(userPhone, role, title, message, type = 'info', meta = {}) {
+        const notifs = getLocal(STORAGE_KEYS.NOTIFICATIONS, []);
+        const newNotif = {
+            id: 'NOTIF-' + Date.now(),
+            userPhone,
+            role,
+            title,
+            message,
+            type,
+            meta,
+            read: false,
+            timestamp: new Date().toISOString()
+        };
+        notifs.unshift(newNotif);
+        setLocal(STORAGE_KEYS.NOTIFICATIONS, notifs.slice(0, 100));
+        this.notify('notification_added', newNotif);
+        return newNotif;
+    }
+
+    getNotifications(userPhone, role) {
+        const notifs = getLocal(STORAGE_KEYS.NOTIFICATIONS, []);
+        return notifs.filter(n => (n.userPhone === userPhone || !userPhone) && (!role || n.role === role));
+    }
+
+    markNotificationRead(id) {
+        const notifs = getLocal(STORAGE_KEYS.NOTIFICATIONS, []);
+        const updated = notifs.map(n => n.id === id ? { ...n, read: true } : n);
+        setLocal(STORAGE_KEYS.NOTIFICATIONS, updated);
+        this.notify('notification_read', id);
+    }
+
+    // ==========================================
+    // ENQUIRIES WORKFLOW
+    // ==========================================
+    async createEnquiry(enquiryData) {
+        const enquiryCode = generateEnquiryId();
+        const fullEnquiry = {
+            id: 'EQ-' + Date.now(),
+            enquiry_code: enquiryCode,
+            status: 'PENDING',
+            load_status: 'PENDING',
+            created_at: new Date().toISOString(),
+            ...enquiryData
+        };
+
+        // Always save to localStorage backup first for instant feedback & resilience
+        const localEnquiries = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+        localEnquiries.unshift(fullEnquiry);
+        setLocal(STORAGE_KEYS.ENQUIRIES, localEnquiries);
+
+        // Attempt Supabase insert
+        try {
+            const { data, error } = await supabase
+                .from('enquiries')
+                .insert([{
+                    enquiry_code: enquiryCode,
+                    mill_id: String(enquiryData.mill_id),
+                    mill_name: enquiryData.mill_name,
+                    buyer_phone: enquiryData.buyer_phone,
+                    buyer_name: enquiryData.buyer_name,
+                    farmer_phone: enquiryData.farmer_phone,
+                    farmer_name: enquiryData.farmer_name,
+                    farmer_id: enquiryData.farmer_phone,
+                    crop_id: enquiryData.crop_id ? String(enquiryData.crop_id) : null,
+                    crop_name: enquiryData.crop_name,
+                    acres: Number(enquiryData.acres) || 0,
+                    quantity: Number(enquiryData.quantity) || Number(enquiryData.acres) * 2,
+                    expected_price: Number(enquiryData.expected_price) || 0,
+                    offered_price: Number(enquiryData.offered_price) || 0,
+                    total_price: Number(enquiryData.total_price) || 0,
+                    transport_required: Boolean(enquiryData.transport_required),
+                    vehicle_capacity: enquiryData.vehicle_capacity || null,
+                    vehicle_type: enquiryData.vehicle_type || null,
+                    pickup_location: enquiryData.pickup_location || '',
+                    delivery_location: enquiryData.delivery_location || '',
+                    pickup_date: enquiryData.pickup_date || '',
+                    transport_instructions: enquiryData.transport_instructions || '',
+                    message: enquiryData.message || '',
+                    status: 'PENDING',
+                    load_status: 'PENDING',
+                    created_at: fullEnquiry.created_at,
+                    farmer_lat: enquiryData.farmer_lat || null,
+                    farmer_lng: enquiryData.farmer_lng || null,
+                    farmer_location_name: enquiryData.farmer_location_name || '',
+                    mill_lat: enquiryData.mill_lat || null,
+                    mill_lng: enquiryData.mill_lng || null,
+                    mill_location_name: enquiryData.mill_location_name || '',
+                    distance: enquiryData.distance || 0
+                }])
+                .select();
+
+            if (data && data[0]) {
+                fullEnquiry.id = data[0].id;
+            }
+        } catch (e) {
+            console.warn("Supabase enquiry sync error (using local backup):", e);
+        }
+
+        // Notify mill
+        this.addNotification(
+            enquiryData.buyer_phone,
+            'buyers',
+            'New Farmer Enquiry Received',
+            `Farmer ${enquiryData.farmer_name} sent enquiry ${enquiryCode} for ${enquiryData.quantity || enquiryData.acres} of ${enquiryData.crop_name}.`,
+            'enquiry',
+            { enquiryCode }
+        );
+
+        this.notify('enquiry_created', fullEnquiry);
+        return fullEnquiry;
+    }
+
+    async getEnquiries({ farmerPhone, millId, buyerPhone } = {}) {
+        let list = [];
+        try {
+            let query = supabase.from('enquiries').select('*').order('created_at', { ascending: false });
+            if (farmerPhone) query = query.eq('farmer_phone', farmerPhone);
+            if (millId) query = query.eq('mill_id', String(millId));
+            else if (buyerPhone) query = query.eq('buyer_phone', buyerPhone);
+
+            const { data, error } = await query;
+            if (!error && data && data.length > 0) {
+                list = data;
+            }
+        } catch (e) {
+            console.warn("Supabase fetch enquiries fallback:", e);
+        }
+
+        // Merge with local fallback to guarantee no lost state
+        const localList = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+        const filteredLocal = localList.filter(eq => {
+            if (farmerPhone && eq.farmer_phone !== farmerPhone) return false;
+            if (millId && String(eq.mill_id) !== String(millId) && eq.buyer_phone !== buyerPhone) return false;
+            return true;
+        });
+
+        // Combine unique by enquiry_code
+        const map = new Map();
+        list.forEach(item => map.set(item.enquiry_code || item.id, item));
+        filteredLocal.forEach(item => {
+            const key = item.enquiry_code || item.id;
+            if (!map.has(key)) map.set(key, item);
+        });
+
+        return Array.from(map.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+
+    async acceptEnquiry(enquiryIdOrCode, millUser) {
+        const acceptedAt = new Date().toISOString();
+        const localList = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+        let updatedEnquiry = null;
+
+        const updatedLocal = localList.map(eq => {
+            if (eq.id === enquiryIdOrCode || eq.enquiry_code === enquiryIdOrCode) {
+                eq.status = 'ACCEPTED';
+                eq.load_status = 'ACCEPTED_BY_MILL';
+                eq.accepted_at = acceptedAt;
+                eq.accepted_by = millUser.name || millUser.phone;
+                updatedEnquiry = eq;
+            }
+            return eq;
+        });
+        setLocal(STORAGE_KEYS.ENQUIRIES, updatedLocal);
+
+        try {
+            await supabase
+                .from('enquiries')
+                .update({
+                    status: 'ACCEPTED',
+                    load_status: 'ACCEPTED_BY_MILL',
+                    accepted_at: acceptedAt,
+                    accepted_by: millUser.name || millUser.phone
+                })
+                .or(`id.eq.${enquiryIdOrCode},enquiry_code.eq.${enquiryIdOrCode}`);
+        } catch (e) {
+            console.warn("Supabase update enquiry error:", e);
+        }
+
+        if (updatedEnquiry) {
+            // Generate QR token record
+            this.createQrToken(updatedEnquiry.id, updatedEnquiry.enquiry_code);
+
+            // Notify farmer
+            this.addNotification(
+                updatedEnquiry.farmer_phone,
+                'farmers',
+                'Enquiry Accepted by Mill!',
+                `Mill ${updatedEnquiry.mill_name || 'Buyer'} accepted your enquiry ${updatedEnquiry.enquiry_code}. Your Crop Verification QR is now ready!`,
+                'success',
+                { enquiryCode: updatedEnquiry.enquiry_code }
+            );
+
+            // If transport required, automatically generate transport request
+            if (updatedEnquiry.transport_required) {
+                await this.createTransportRequestFromEnquiry(updatedEnquiry);
+            }
+        }
+
+        this.notify('enquiry_accepted', updatedEnquiry);
+        return updatedEnquiry;
+    }
+
+    async rejectEnquiry(enquiryIdOrCode, reason = '') {
+        const localList = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+        let updatedEnquiry = null;
+
+        const updatedLocal = localList.map(eq => {
+            if (eq.id === enquiryIdOrCode || eq.enquiry_code === enquiryIdOrCode) {
+                eq.status = 'REJECTED';
+                eq.load_status = 'REJECTED';
+                eq.reject_reason = reason;
+                updatedEnquiry = eq;
+            }
+            return eq;
+        });
+        setLocal(STORAGE_KEYS.ENQUIRIES, updatedLocal);
+
+        try {
+            await supabase
+                .from('enquiries')
+                .update({ status: 'REJECTED', load_status: 'REJECTED' })
+                .or(`id.eq.${enquiryIdOrCode},enquiry_code.eq.${enquiryIdOrCode}`);
+        } catch (e) {
+            console.warn("Supabase reject enquiry error:", e);
+        }
+
+        if (updatedEnquiry) {
+            this.addNotification(
+                updatedEnquiry.farmer_phone,
+                'farmers',
+                'Enquiry Update',
+                `Enquiry ${updatedEnquiry.enquiry_code} was not accepted at this time by the mill.`,
+                'warning'
+            );
+        }
+
+        this.notify('enquiry_rejected', updatedEnquiry);
+        return updatedEnquiry;
+    }
+
+    // ==========================================
+    // QR TOKENS & VERIFICATION
+    // ==========================================
+    createQrToken(enquiryId, enquiryCode) {
+        const token = `KC-SECURE-${enquiryCode}-${Date.now().toString(36).toUpperCase()}`;
+        const tokens = getLocal('kisan_qr_tokens', []);
+        const entry = {
+            id: 'QRT-' + Date.now(),
+            enquiry_id: enquiryId,
+            enquiry_code: enquiryCode,
+            token,
+            created_at: new Date().toISOString(),
+            is_active: true
+        };
+        tokens.push(entry);
+        setLocal('kisan_qr_tokens', tokens);
+
+        try {
+            supabase.from('enquiry_qr_tokens').insert([entry]);
+        } catch (e) {
+            console.warn("QR token insert error:", e);
+        }
+        return token;
+    }
+
+    async verifyScannedQr(qrData, loggedInMill) {
+        if (!qrData) {
+            return { success: false, message: 'Invalid or empty QR code' };
+        }
+
+        // Clean and extract enquiry code or token
+        const cleanCode = qrData.trim();
+        const allEnquiries = await this.getEnquiries();
+        
+        // Find matched enquiry by enquiry_code, id, or secure token
+        const enquiry = allEnquiries.find(eq => 
+            eq.enquiry_code === cleanCode || 
+            eq.id === cleanCode ||
+            cleanCode.includes(eq.enquiry_code)
+        );
+
+        if (!enquiry) {
+            return {
+                success: false,
+                errorCode: 'NOT_FOUND',
+                message: `No active enquiry found matching code "${cleanCode}".`
+            };
+        }
+
+        // Match against logged in mill: check mill_id, owner_phone, buyer_phone
+        const millIdMatches = loggedInMill && (
+            String(enquiry.mill_id) === String(loggedInMill.id) ||
+            enquiry.buyer_phone === loggedInMill.ownerPhone ||
+            enquiry.buyer_phone === loggedInMill.phone ||
+            enquiry.mill_name?.toLowerCase() === loggedInMill.millName?.toLowerCase()
+        );
+
+        const isAccepted = enquiry.status === 'ACCEPTED' || enquiry.status === 'LOAD_RECEIVED';
+
+        return {
+            success: true,
+            isMatch: Boolean(millIdMatches),
+            isAccepted,
+            isAlreadyReceived: enquiry.load_status === 'LOAD_RECEIVED',
+            enquiry,
+            scannedCode: cleanCode
+        };
+    }
+
+    // ==========================================
+    // LOAD RECEIVING
+    // ==========================================
+    async acceptLoad(enquiryCode, loggedInMill) {
+        const receivedAt = new Date().toISOString();
+        const localEnquiries = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+        let targetEnquiry = null;
+
+        const updatedEnquiries = localEnquiries.map(eq => {
+            if (eq.enquiry_code === enquiryCode || eq.id === enquiryCode) {
+                eq.load_status = 'LOAD_RECEIVED';
+                eq.status = 'LOAD_RECEIVED';
+                eq.received_at = receivedAt;
+                eq.received_by = loggedInMill.millName || loggedInMill.name || loggedInMill.phone;
+                targetEnquiry = eq;
+            }
+            return eq;
+        });
+        setLocal(STORAGE_KEYS.ENQUIRIES, updatedEnquiries);
+
+        // Record in loads table
+        const loadRecord = {
+            id: 'LOAD-' + Date.now(),
+            enquiry_id: targetEnquiry?.id || enquiryCode,
+            enquiry_code: enquiryCode,
+            farmer_id: targetEnquiry?.farmer_phone || '',
+            farmer_name: targetEnquiry?.farmer_name || '',
+            mill_id: String(loggedInMill.id || targetEnquiry?.mill_id),
+            mill_name: loggedInMill.millName || targetEnquiry?.mill_name,
+            crop_id: targetEnquiry?.crop_id || null,
+            crop_name: targetEnquiry?.crop_name || '',
+            quantity: targetEnquiry?.quantity || 10,
+            acres: targetEnquiry?.acres || 5,
+            price: targetEnquiry?.total_price || targetEnquiry?.expected_price || 0,
+            transport_method: targetEnquiry?.transport_required ? 'KisanConnect Logistics' : 'Self Arranged',
+            status: 'RECEIVED',
+            received_at: receivedAt,
+            received_by: loggedInMill.millName || loggedInMill.name || loggedInMill.phone
+        };
+
+        const loads = getLocal(STORAGE_KEYS.LOADS, []);
+        loads.unshift(loadRecord);
+        setLocal(STORAGE_KEYS.LOADS, loads);
+
+        // Supabase updates
+        try {
+            await supabase
+                .from('enquiries')
+                .update({
+                    status: 'LOAD_RECEIVED',
+                    load_status: 'LOAD_RECEIVED',
+                    received_at: receivedAt,
+                    received_by: loadRecord.received_by
+                })
+                .eq('enquiry_code', enquiryCode);
+
+            await supabase.from('loads').insert([loadRecord]);
+        } catch (e) {
+            console.warn("Supabase accept load error:", e);
+        }
+
+        // Notify farmer
+        if (targetEnquiry) {
+            this.addNotification(
+                targetEnquiry.farmer_phone,
+                'farmers',
+                'Load Received by Mill!',
+                `Great news! Mill ${loadRecord.mill_name} has verified your QR code and officially confirmed receipt of ${targetEnquiry.quantity || targetEnquiry.acres} of ${targetEnquiry.crop_name}.`,
+                'success',
+                { enquiryCode }
+            );
+        }
+
+        this.notify('load_received', loadRecord);
+        return loadRecord;
+    }
+
+    async getLoadsReceived({ millId, farmerPhone, buyerPhone } = {}) {
+        let loads = [];
+        try {
+            let query = supabase.from('loads').select('*').order('received_at', { ascending: false });
+            if (millId) query = query.eq('mill_id', String(millId));
+            if (farmerPhone) query = query.eq('farmer_id', farmerPhone);
+            const { data, error } = await query;
+            if (!error && data && data.length > 0) loads = data;
+        } catch (e) {
+            console.warn("Loads fetch fallback:", e);
+        }
+
+        const localLoads = getLocal(STORAGE_KEYS.LOADS, []);
+        const filteredLocal = localLoads.filter(ld => {
+            if (farmerPhone && ld.farmer_id !== farmerPhone) return false;
+            if (millId && String(ld.mill_id) !== String(millId)) return false;
+            return true;
+        });
+
+        const map = new Map();
+        loads.forEach(l => map.set(l.enquiry_code || l.id, l));
+        filteredLocal.forEach(l => {
+            const key = l.enquiry_code || l.id;
+            if (!map.has(key)) map.set(key, l);
+        });
+
+        return Array.from(map.values()).sort((a, b) => new Date(b.received_at || 0) - new Date(a.received_at || 0));
+    }
+
+    // ==========================================
+    // TRANSPORT WORKFLOW & SMART MATCHING
+    // ==========================================
+    async createTransportRequestFromEnquiry(enquiry) {
+        const transportCode = generateTransportId();
+        const quantityTons = Number(enquiry.quantity) || (Number(enquiry.acres) * 2) || 10;
+        
+        const req = {
+            id: 'TR-' + Date.now(),
+            transport_code: transportCode,
+            enquiry_id: enquiry.id,
+            enquiry_code: enquiry.enquiry_code,
+            farmer_id: enquiry.farmer_phone,
+            farmer_name: enquiry.farmer_name,
+            farmer_phone: enquiry.farmer_phone,
+            mill_id: enquiry.mill_id,
+            mill_name: enquiry.mill_name,
+            crop_name: enquiry.crop_name,
+            quantity: quantityTons,
+            pickup_lat: enquiry.farmer_lat,
+            pickup_lng: enquiry.farmer_lng,
+            pickup_address: enquiry.farmer_location_name || enquiry.pickup_location || 'Farmer Farm Location',
+            delivery_lat: enquiry.mill_lat,
+            delivery_lng: enquiry.mill_lng,
+            delivery_address: enquiry.mill_location_name || enquiry.delivery_location || 'Processing Mill',
+            required_capacity: quantityTons,
+            vehicle_type: enquiry.vehicle_type || 'Truck',
+            pickup_date: enquiry.pickup_date || new Date().toISOString().split('T')[0],
+            distance: enquiry.distance || calculateDistance(enquiry.farmer_lat, enquiry.farmer_lng, enquiry.mill_lat, enquiry.mill_lng) || 35,
+            status: 'SEARCHING',
+            created_at: new Date().toISOString()
+        };
+
+        const requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
+        requests.unshift(req);
+        setLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, requests);
+
+        try {
+            await supabase.from('transport_requests').insert([req]);
+        } catch (e) {
+            console.warn("Supabase transport request insert error:", e);
+        }
+
+        // Auto-seed smart quotes from suitable transport providers
+        this.generateSmartInitialQuotes(req);
+
+        this.notify('transport_request_created', req);
+        return req;
+    }
+
+    generateSmartInitialQuotes(transportReq) {
+        const providers = this.getSuitableTransportProviders(transportReq.required_capacity);
+        const quotes = getLocal(STORAGE_KEYS.TRANSPORT_QUOTES, []);
+
+        providers.slice(0, 3).forEach((prov, idx) => {
+            const distance = transportReq.distance || 40;
+            const baseCost = Math.round(distance * prov.price_per_km);
+            const quotePrice = baseCost + (idx * 250); // slight competitive variance
+
+            const quote = {
+                id: 'QT-' + Date.now() + '-' + idx,
+                transport_request_id: transportReq.id,
+                transport_code: transportReq.transport_code,
+                provider_id: prov.phone,
+                provider_name: prov.name,
+                provider_phone: prov.phone,
+                vehicle_number: prov.vehicle_number,
+                vehicle_type: prov.vehicle_type,
+                vehicle_capacity: prov.capacity,
+                price: quotePrice,
+                estimated_time: `${Math.round(distance / 35 + 1)} Hours`,
+                status: 'PENDING',
+                created_at: new Date().toISOString()
+            };
+            quotes.push(quote);
+        });
+
+        setLocal(STORAGE_KEYS.TRANSPORT_QUOTES, quotes);
+    }
+
+    // SMART TRUCK MATCHING
+    // 1. Capacity >= Crop quantity
+    // 2. Sorted by suitability, distance, rating, price
+    getSuitableTransportProviders(requiredCapacityTons = 0) {
+        const providers = getLocal(STORAGE_KEYS.TRANSPORT_PROVIDERS, DEFAULT_PROVIDERS);
+        return providers
+            .filter(p => p.capacity >= requiredCapacityTons)
+            .sort((a, b) => {
+                // Capacity closest to requirement first, then highest rating, lowest price
+                const capDiffA = a.capacity - requiredCapacityTons;
+                const capDiffB = b.capacity - requiredCapacityTons;
+                if (capDiffA !== capDiffB) return capDiffA - capDiffB;
+                if (b.rating !== a.rating) return b.rating - a.rating;
+                return a.price_per_km - b.price_per_km;
+            });
+    }
+
+    getTransportRequests({ farmerPhone, millId, providerPhone } = {}) {
+        const requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
+        return requests.filter(req => {
+            if (farmerPhone && req.farmer_phone !== farmerPhone) return false;
+            if (millId && String(req.mill_id) !== String(millId)) return false;
+            if (providerPhone && req.assigned_provider_id && req.assigned_provider_id !== providerPhone) return false;
+            return true;
+        });
+    }
+
+    getQuotesForRequest(transportCodeOrId) {
+        const quotes = getLocal(STORAGE_KEYS.TRANSPORT_QUOTES, []);
+        return quotes.filter(q => q.transport_code === transportCodeOrId || q.transport_request_id === transportCodeOrId);
+    }
+
+    submitTransportQuote(transportCode, providerData, price, estimatedTime) {
+        const quote = {
+            id: 'QT-' + Date.now(),
+            transport_code: transportCode,
+            provider_id: providerData.phone,
+            provider_name: providerData.name,
+            provider_phone: providerData.phone,
+            vehicle_number: providerData.vehicle_number,
+            vehicle_type: providerData.vehicle_type,
+            vehicle_capacity: providerData.capacity,
+            price: Number(price),
+            estimated_time: estimatedTime || '2 Hours',
+            status: 'PENDING',
+            created_at: new Date().toISOString()
+        };
+
+        const quotes = getLocal(STORAGE_KEYS.TRANSPORT_QUOTES, []);
+        quotes.push(quote);
+        setLocal(STORAGE_KEYS.TRANSPORT_QUOTES, quotes);
+
+        // Update transport request status to QUOTED if searching
+        const requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
+        const updated = requests.map(r => {
+            if (r.transport_code === transportCode && r.status === 'SEARCHING') {
+                r.status = 'QUOTED';
+            }
+            return r;
+        });
+        setLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, updated);
+
+        this.notify('quote_submitted', quote);
+        return quote;
+    }
+
+    acceptTransportQuote(quoteId, acceptedByRole = 'farmers') {
+        const quotes = getLocal(STORAGE_KEYS.TRANSPORT_QUOTES, []);
+        let selectedQuote = null;
+
+        const updatedQuotes = quotes.map(q => {
+            if (q.id === quoteId) {
+                q.status = 'ACCEPTED';
+                selectedQuote = q;
+            } else if (selectedQuote && q.transport_code === selectedQuote.transport_code) {
+                q.status = 'REJECTED';
+            }
+            return q;
+        });
+        setLocal(STORAGE_KEYS.TRANSPORT_QUOTES, updatedQuotes);
+
+        if (selectedQuote) {
+            // Update transport request to ASSIGNED
+            const requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
+            const updatedReqs = requests.map(r => {
+                if (r.transport_code === selectedQuote.transport_code) {
+                    r.status = 'ASSIGNED';
+                    r.assigned_provider_id = selectedQuote.provider_id;
+                    r.assigned_provider_name = selectedQuote.provider_name;
+                    r.assigned_provider_phone = selectedQuote.provider_phone;
+                    r.vehicle_number = selectedQuote.vehicle_number;
+                    r.final_price = selectedQuote.price;
+                }
+                return r;
+            });
+            setLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, updatedReqs);
+
+            // Notify transport provider
+            this.addNotification(
+                selectedQuote.provider_phone,
+                'transporters',
+                'Quote Accepted!',
+                `Congratulations! Your quote of ₹${selectedQuote.price} for request ${selectedQuote.transport_code} has been accepted. Prepare for pickup!`,
+                'success',
+                { transportCode: selectedQuote.transport_code }
+            );
+        }
+
+        this.notify('quote_accepted', selectedQuote);
+        return selectedQuote;
+    }
+
+    updateTransportStatus(transportCode, newStatus) {
+        // Lifecycle: REQUESTED -> SEARCHING -> QUOTED -> ASSIGNED -> VEHICLE_ASSIGNED -> PICKUP_STARTED -> CROP_PICKED_UP -> IN_TRANSIT -> ARRIVED_AT_MILL -> DELIVERED
+        const requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
+        let updatedReq = null;
+
+        const updated = requests.map(r => {
+            if (r.transport_code === transportCode) {
+                r.status = newStatus;
+                r.updated_at = new Date().toISOString();
+                updatedReq = r;
+            }
+            return r;
+        });
+        setLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, updated);
+
+        if (updatedReq) {
+            // Notify farmer and mill of transport status update
+            const statusTitles = {
+                'PICKUP_STARTED': 'Vehicle Dispatched for Pickup',
+                'CROP_PICKED_UP': 'Crop Picked Up from Farm',
+                'IN_TRANSIT': 'Crop In-Transit to Mill',
+                'ARRIVED_AT_MILL': 'Transport Arrived at Mill Gate',
+                'DELIVERED': 'Crop Transport Delivered Successfully'
+            };
+
+            const title = statusTitles[newStatus] || `Transport Status: ${newStatus}`;
+            this.addNotification(
+                updatedReq.farmer_phone,
+                'farmers',
+                title,
+                `Vehicle ${updatedReq.vehicle_number || ''} status for enquiry ${updatedReq.enquiry_code} updated to ${newStatus}.`,
+                'info'
+            );
+        }
+
+        this.notify('transport_status_updated', updatedReq);
+        return updatedReq;
+    }
+}
+
+export const kisanService = new KisanService();

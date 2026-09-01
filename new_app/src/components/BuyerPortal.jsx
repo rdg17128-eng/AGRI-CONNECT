@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabase';
+import { kisanService } from '../services/kisanService';
 import AddMillModal from './AddMillModal';
 import UpdatePricesModal from './UpdatePricesModal';
+import QrScannerModal from './QrScannerModal';
+import QrCodeModal from './QrCodeModal';
+import KisanLogo from './KisanLogo';
 
 export default function BuyerPortal({ user, onLogout }) {
     const [activeTab, setActiveTabState] = useState(() => {
-        return localStorage.getItem('agri_active_tab') || 'dashboard';
+        return localStorage.getItem('kisan_active_tab') || localStorage.getItem('agri_active_tab') || 'dashboard';
     });
     const setActiveTab = (tab) => {
+        localStorage.setItem('kisan_active_tab', tab);
         localStorage.setItem('agri_active_tab', tab);
         setActiveTabState(tab);
     };
@@ -23,7 +28,6 @@ export default function BuyerPortal({ user, onLogout }) {
     const [gstNumber, setGstNumber] = useState(user.gstNumber || '');
     const [businessType, setBusinessType] = useState(user.businessType || 'Retailer');
     const [buyingCapacity, setBuyingCapacity] = useState(user.buyingCapacity || '');
-    const [preferredCrops] = useState(user.preferredCrops || []);
 
     // Security States
     const [newPhone, setNewPhone] = useState(user.phone || '');
@@ -36,17 +40,40 @@ export default function BuyerPortal({ user, onLogout }) {
     const [loadingMills, setLoadingMills] = useState(true);
     const [selectedMillForPricing, setSelectedMillForPricing] = useState(null);
 
-    // Enquiry States
+    // Enquiry & Load States
     const [enquiries, setEnquiries] = useState([]);
     const [loadingEnquiries, setLoadingEnquiries] = useState(true);
+    const [loadsReceived, setLoadsReceived] = useState([]);
+    const [transportRequests, setTransportRequests] = useState([]);
+    
+    // Modal States
+    const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+    const [selectedEnquiryForQr, setSelectedEnquiryForQr] = useState(null);
+    const [enquiryFilter, setEnquiryFilter] = useState('ALL'); // 'ALL' | 'PENDING' | 'ACCEPTED' | 'LOAD_RECEIVED'
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         fetchMills();
-        fetchEnquiries();
-        return () => clearInterval(timer);
+        refreshAllData();
+
+        const unsub = kisanService.subscribe(() => {
+            refreshAllData();
+        });
+
+        return () => {
+            clearInterval(timer);
+            unsub();
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const refreshAllData = async () => {
+        await Promise.all([
+            fetchEnquiries(),
+            fetchLoadsReceived(),
+            fetchTransportRequests()
+        ]);
+    };
 
     const fetchMills = async () => {
         setLoadingMills(true);
@@ -85,30 +112,8 @@ export default function BuyerPortal({ user, onLogout }) {
     const fetchEnquiries = async () => {
         setLoadingEnquiries(true);
         try {
-            const { data, error } = await supabase
-                .from('enquiries')
-                .select('*')
-                .eq('buyer_phone', user.phone);
-
-            if (error) throw error;
-
-            const mappedEnquiries = (data || []).map(o => ({
-                id: o.id,
-                millId: o.mill_id,
-                buyerPhone: o.buyer_phone,
-                buyerName: o.buyer_name,
-                farmerPhone: o.farmer_phone,
-                farmerName: o.farmer_name,
-                cropName: o.crop_name,
-                quantity: o.quantity,
-                status: o.status,
-                pricePerQuintal: o.price_per_quintal,
-                totalPrice: o.total_price,
-                cropId: o.crop_id,
-                createdAt: o.created_at,
-                updatedAt: o.updated_at
-            })).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-            setEnquiries(mappedEnquiries);
+            const list = await kisanService.getEnquiries({ buyerPhone: user.phone });
+            setEnquiries(list);
         } catch (error) {
             console.error("Error fetching enquiries:", error);
         } finally {
@@ -116,191 +121,164 @@ export default function BuyerPortal({ user, onLogout }) {
         }
     };
 
-    const handleAcceptEnquiry = async (enquiryId) => {
-        if (!window.confirm('Do you want to accept this order and securely share your accurate mill location with the farmer for logistics?')) return;
-        const targetEnquiry = enquiries.find(e => e.id === enquiryId);
-        if (!targetEnquiry) return;
+    const fetchLoadsReceived = async () => {
+        try {
+            const loads = await kisanService.getLoadsReceived({ buyerPhone: user.phone });
+            setLoadsReceived(loads);
+        } catch (error) {
+            console.error("Error fetching loads:", error);
+        }
+    };
+
+    const fetchTransportRequests = async () => {
+        try {
+            const reqs = kisanService.getTransportRequests();
+            setTransportRequests(reqs);
+        } catch (error) {
+            console.error("Error fetching transport:", error);
+        }
+    };
+
+    const handleAcceptEnquiry = async (enquiry) => {
+        if (!window.confirm(`Accept enquiry ${enquiry.enquiry_code} from ${enquiry.farmer_name}? A secure verification QR will be generated automatically.`)) return;
 
         try {
-            // Update this enquiry to accepted
-            const { error } = await supabase
-                .from('enquiries')
-                .update({ status: 'accepted', updated_at: new Date().toISOString() })
-                .eq('id', enquiryId);
+            const accepted = await kisanService.acceptEnquiry(enquiry.enquiry_code || enquiry.id, {
+                name: profileName || user.phone,
+                phone: user.phone,
+                id: mills[0]?.id || user.phone,
+                millName: mills[0]?.millName || 'KisanConnect Mill'
+            });
 
-            if (error) throw error;
-
-            // Automatically decline any other pending enquiries from the same farmer for the same crop
-            try {
-                await supabase
-                    .from('enquiries')
-                    .update({ status: 'declined', updated_at: new Date().toISOString() })
-                    .eq('buyer_phone', user.phone)
-                    .eq('farmer_phone', targetEnquiry.farmerPhone)
-                    .eq('crop_name', targetEnquiry.cropName)
-                    .eq('status', 'pending');
-            } catch (err) {
-                console.error('Error auto-declining duplicates:', err);
+            if (accepted) {
+                // Instantly open QR Code Modal for viewing, sharing, or downloading
+                setSelectedEnquiryForQr(accepted);
+                refreshAllData();
             }
-
-            setEnquiries(prev => prev.map(enq => {
-                if (enq.id === enquiryId) {
-                    return { ...enq, status: 'accepted' };
-                } else if (
-                    enq.farmerPhone === targetEnquiry.farmerPhone &&
-                    enq.cropName === targetEnquiry.cropName &&
-                    enq.status === 'pending'
-                ) {
-                    return { ...enq, status: 'declined' };
-                }
-                return enq;
-            }));
-
-            alert('Enquiry accepted successfully! The farmer has been notified.');
         } catch (error) {
-            console.error('Error accepting enquiry:', error);
-            alert('Failed to accept enquiry.');
+            console.error("Error accepting enquiry:", error);
+            alert("Failed to accept enquiry. Please try again.");
+        }
+    };
+
+    const handleRejectEnquiry = async (enquiry) => {
+        const reason = window.prompt("Please provide a reason for rejecting this enquiry (optional):", "Price negotiation / Capacity limit");
+        if (reason === null) return;
+
+        try {
+            await kisanService.rejectEnquiry(enquiry.enquiry_code || enquiry.id, reason);
+            refreshAllData();
+        } catch (error) {
+            console.error("Error rejecting enquiry:", error);
         }
     };
 
     const handleUpdateProfile = async () => {
         setIsSavingProfile(true);
         try {
-            const buyerData = {
-                name: profileName,
-                altPhone: profileAltPhone,
-                gstNumber: gstNumber,
-                businessType: businessType,
-                buyingCapacity: buyingCapacity,
-                preferredCrops: preferredCrops,
-                created_at: new Date().toISOString()
-            };
             const { error } = await supabase
-                .from(`${user.role}s`)
-                .update(buyerData)
+                .from('buyers')
+                .update({
+                    name: profileName,
+                    altPhone: profileAltPhone,
+                    gstNumber,
+                    businessType,
+                    buyingCapacity
+                })
                 .eq('phone', user.phone);
 
             if (error) throw error;
-            alert('Buyer profile and records synchronized successfully!');
+            alert('Buyer profile synchronized successfully!');
         } catch (error) {
             console.error(error);
-            alert('Failed to update buyer records');
+            alert('Failed to update profile.');
         } finally {
             setIsSavingProfile(false);
         }
     };
 
     const handleUpdateSecurity = async () => {
-        if (!newPhone || newPhone.length !== 10 || isNaN(newPhone)) return alert("Please enter a valid 10-digit phone number.");
-        if (!newPin || newPin.length !== 6 || isNaN(newPin)) return alert("Please enter a valid 6-digit PIN.");
+        if (newPhone.length !== 10 || isNaN(newPhone)) return alert('Phone must be 10 digits');
+        if (newPin.length < 4 || isNaN(newPin)) return alert('PIN must be 4 to 6 digits');
 
         setIsUpdatingSecurity(true);
         try {
-            const isPhoneChanged = newPhone !== user.phone;
-
-            if (isPhoneChanged) {
-                const { data: existingUser, error: checkError } = await supabase
-                    .from(`${user.role}s`)
-                    .select('phone')
-                    .eq('phone', newPhone)
-                    .maybeSingle();
-
-                if (checkError) throw checkError;
-
-                if (existingUser) {
-                    setIsUpdatingSecurity(false);
-                    return alert("This new phone number is already registered.");
-                }
-
-                const newUserData = {
-                    phone: newPhone,
-                    pin: newPin,
-                    name: profileName,
-                    altPhone: profileAltPhone,
-                    gstNumber: gstNumber,
-                    businessType: businessType,
-                    buyingCapacity: buyingCapacity,
-                    created_at: new Date().toISOString()
-                };
-                const { error: createError } = await supabase
-                    .from(`${user.role}s`)
-                    .insert(newUserData);
-
-                if (createError) throw createError;
-
-                // Migrate owned mills
-                const { error: migrateMillsError } = await supabase
-                    .from('mills')
-                    .update({ owner_phone: newPhone })
-                    .eq('owner_phone', user.phone);
-
-                if (migrateMillsError) throw migrateMillsError;
-
-                // Delete old user doc
-                const { error: deleteError } = await supabase
-                    .from(`${user.role}s`)
-                    .delete()
-                    .eq('phone', user.phone);
-
-                if (deleteError) throw deleteError;
-
-                alert("Phone number changed successfully! Please log in again.");
-                onLogout();
-            } else {
-                const { error: updateError } = await supabase
-                    .from(`${user.role}s`)
-                    .update({ pin: newPin })
-                    .eq('phone', user.phone);
-
-                if (updateError) throw updateError;
-                alert("PIN updated successfully!");
-                user.pin = newPin;
-            }
-        } catch (error) {
-            console.error(error);
-            alert("Error updating security settings.");
+            await supabase.from('buyers').update({ pin: newPin }).eq('phone', user.phone);
+            alert('Security PIN updated successfully!');
+        } catch (e) {
+            alert('Error updating PIN');
         } finally {
             setIsUpdatingSecurity(false);
         }
     };
 
+    const filteredEnquiries = enquiries.filter(eq => {
+        if (enquiryFilter === 'ALL') return true;
+        return eq.status === enquiryFilter;
+    });
+
+    const activeMill = mills[0] || {
+        id: user.phone,
+        millName: profileName || 'KisanConnect Processing Mill',
+        ownerPhone: user.phone
+    };
+
     return (
-        <div className="app-container" style={{ display: 'flex' }}>
-            {/* Sidebar Overlay for Mobile */}
+        <div className="portal-container">
             {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
 
+            {/* Sidebar */}
             <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
-                <div className="logo">
-                    <i className="fa-solid fa-leaf"></i>
-                    <span>AgriConnect</span>
+                <div className="logo" style={{ marginBottom: '2rem' }}>
+                    <KisanLogo size="md" />
                 </div>
+
                 <nav className="nav-menu">
                     <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-house"></i>
                         <span>Dashboard</span>
                     </a>
-                    <a className={`nav-item ${activeTab === 'browse' ? 'active' : ''}`} onClick={() => { setActiveTab('browse'); setIsSidebarOpen(false); }}>
-                        <i className="fa-solid fa-magnifying-glass"></i>
-                        <span>Browse Crops</span>
-                    </a>
-                    <a className={`nav-item ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => { setActiveTab('orders'); setIsSidebarOpen(false); }}>
-                        <i className="fa-solid fa-box-open"></i>
-                        <span>My Purchases</span>
-                    </a>
                     <a className={`nav-item ${activeTab === 'enquiries' ? 'active' : ''}`} onClick={() => { setActiveTab('enquiries'); setIsSidebarOpen(false); }}>
-                        <i className="fa-solid fa-envelope"></i>
-                        <span>Enquiries</span>
+                        <i className="fa-solid fa-inbox"></i>
+                        <span>Farmer Enquiries</span>
+                        {enquiries.filter(e => e.status === 'PENDING').length > 0 && (
+                            <span className="badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
+                                {enquiries.filter(e => e.status === 'PENDING').length}
+                            </span>
+                        )}
+                    </a>
+                    <a className={`nav-item ${activeTab === 'scanqr' ? 'active' : ''}`} onClick={() => { setIsQrScannerOpen(true); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-qrcode" style={{ color: 'var(--primary)' }}></i>
+                        <span style={{ color: 'var(--primary)', fontWeight: 700 }}>Scan Farmer QR</span>
+                    </a>
+                    <a className={`nav-item ${activeTab === 'loads' ? 'active' : ''}`} onClick={() => { setActiveTab('loads'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-truck-ramp-box"></i>
+                        <span>Loads Received</span>
+                        {loadsReceived.length > 0 && (
+                            <span className="badge" style={{ marginLeft: 'auto', background: 'var(--accent-gold)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
+                                {loadsReceived.length}
+                            </span>
+                        )}
+                    </a>
+                    <a className={`nav-item ${activeTab === 'transport' ? 'active' : ''}`} onClick={() => { setActiveTab('transport'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-truck-fast"></i>
+                        <span>Transport Fleet</span>
+                    </a>
+                    <a className={`nav-item ${activeTab === 'mills' ? 'active' : ''}`} onClick={() => { setActiveTab('mills'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-industry"></i>
+                        <span>My Mills & Pricing</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { setActiveTab('profile'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-user-gear"></i>
-                        <span>Profile</span>
+                        <span>Profile & Settings</span>
                     </a>
                 </nav>
+
                 <div className="sidebar-bottom">
-                    <div style={{ padding: '0.8rem', background: 'rgba(0, 255, 136, 0.05)', borderRadius: '12px', marginBottom: '1rem', border: '1px solid var(--border-color)' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Buyer Type</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 600 }}>{businessType}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>Capacity: {buyingCapacity || '0'} Tons</div>
+                    <div style={{ padding: '0.8rem', background: 'rgba(16, 185, 129, 0.06)', borderRadius: '12px', marginBottom: '1rem', border: '1px solid var(--border-color)' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Authorized Facility</div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 700 }}>{activeMill.millName}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>Buyer: {businessType}</div>
                     </div>
                     <a className="nav-item logout" onClick={onLogout}>
                         <i className="fa-solid fa-arrow-right-from-bracket"></i>
@@ -309,6 +287,7 @@ export default function BuyerPortal({ user, onLogout }) {
                 </div>
             </aside>
 
+            {/* Main Content */}
             <main className="main-content">
                 <header className="top-header">
                     <div className="header-left">
@@ -320,95 +299,455 @@ export default function BuyerPortal({ user, onLogout }) {
                         </button>
                         <div className="search-bar">
                             <i className="fa-solid fa-search"></i>
-                            <input type="text" placeholder="Search crops, regions..." />
+                            <input type="text" placeholder="Search enquiry ID, farmer, crop..." />
                         </div>
                     </div>
 
-                    <div className="header-actions" style={{ alignItems: 'center' }}>
+                    <div className="header-actions" style={{ alignItems: 'center', gap: '1rem' }}>
+                        {/* Prominent Scan Farmer QR CTA Button */}
+                        <button 
+                            className="primary-btn pulse-glow"
+                            onClick={() => setIsQrScannerOpen(true)}
+                            style={{ 
+                                padding: '0.6rem 1.1rem', 
+                                fontSize: '0.85rem',
+                                borderRadius: '0.75rem',
+                                boxShadow: '0 0 20px rgba(16, 185, 129, 0.4)' 
+                            }}
+                        >
+                            <i className="fa-solid fa-qrcode" style={{ fontSize: '1rem' }}></i>
+                            <span>Scan Farmer QR</span>
+                        </button>
+
                         <div className="header-datetime">
                             <div style={{ fontWeight: 600, color: 'var(--text)' }}>
                                 {currentTime.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })}
                             </div>
                             <div>{currentTime.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</div>
                         </div>
+
                         <div className="user-profile">
-                            <div className="profile-img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', color: 'var(--primary)', fontSize: '1.5rem', width: '45px', height: '45px', borderRadius: '50%' }}>
+                            <div className="profile-img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', color: 'var(--primary)', fontSize: '1.4rem', width: '42px', height: '42px', borderRadius: '50%' }}>
                                 <i className="fa-solid fa-user"></i>
                             </div>
                             <div className="user-info">
                                 <h4>{profileName || user.phone}</h4>
-                                <p>Verified {user.role.charAt(0).toUpperCase() + user.role.slice(1)}</p>
+                                <p>Verified Mill Operator</p>
                             </div>
                         </div>
                     </div>
                 </header>
 
-                {activeTab === 'dashboard' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Welcome, {profileName || 'Buyer'}! 📈</h1>
-                                <p>Find the best quality produce directly from local farms.</p>
+                <div className="dashboard-content" style={{ padding: '2rem 1.5rem' }}>
+
+                    {/* ======================================================== */}
+                    {/* TAB: DASHBOARD */}
+                    {/* ======================================================== */}
+                    {activeTab === 'dashboard' && (
+                        <div>
+                            <div className="welcome-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+                                <div>
+                                    <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 800 }}>Welcome, {profileName || 'Mill Partner'}! 🌾</h1>
+                                    <p style={{ color: 'var(--text-muted)', margin: '0.35rem 0 0 0' }}>KisanConnect Direct Mill Procurement & QR Gate Verification</p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                    <button className="primary-btn" onClick={() => setIsQrScannerOpen(true)}>
+                                        <i className="fa-solid fa-qrcode"></i> Scan Crop QR
+                                    </button>
+                                    <button className="action-btn" onClick={() => setIsAddMillOpen(true)}>
+                                        <i className="fa-solid fa-plus"></i> Add Mill
+                                    </button>
+                                </div>
                             </div>
-                            <button className="primary-btn" onClick={() => setIsAddMillOpen(true)}>
-                                <i className="fa-solid fa-industry"></i> Add Your Mill
-                            </button>
+
+                            {/* Stats Grid */}
+                            <div className="stats-grid" style={{ marginBottom: '2rem' }}>
+                                <div className="stat-card">
+                                    <div className="stat-icon orders"><i className="fa-solid fa-inbox"></i></div>
+                                    <div className="stat-details">
+                                        <h3>Pending Enquiries</h3>
+                                        <h2>{enquiries.filter(e => e.status === 'PENDING').length}</h2>
+                                        <span className="trend up">Awaiting your review</span>
+                                    </div>
+                                </div>
+                                <div className="stat-card">
+                                    <div className="stat-icon crops"><i className="fa-solid fa-qrcode"></i></div>
+                                    <div className="stat-details">
+                                        <h3>Accepted QRs Active</h3>
+                                        <h2>{enquiries.filter(e => e.status === 'ACCEPTED').length}</h2>
+                                        <span className="trend neutral">In transit to mill gate</span>
+                                    </div>
+                                </div>
+                                <div className="stat-card">
+                                    <div className="stat-icon revenue"><i className="fa-solid fa-truck-ramp-box"></i></div>
+                                    <div className="stat-details">
+                                        <h3>Loads Verified & Received</h3>
+                                        <h2>{loadsReceived.length}</h2>
+                                        <span className="trend up">Officially registered</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Fast Action Banner */}
+                            <div className="bento-card" style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(245, 158, 11, 0.1) 100%)', border: '1px solid rgba(16, 185, 129, 0.3)', marginBottom: '2rem', padding: '1.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                                    <div>
+                                        <h3 style={{ margin: '0 0 0.4rem 0', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                            <i className="fa-solid fa-shield-halved"></i>
+                                            Secure Crop Verification Station
+                                        </h3>
+                                        <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '650px' }}>
+                                            Farmers arrive with their generated KisanConnect QR code. Click <strong>Scan Farmer QR</strong> to verify crop origin, acreage, quantity, and confirm load receipt in 1 tap.
+                                        </p>
+                                    </div>
+                                    <button className="primary-btn" onClick={() => setIsQrScannerOpen(true)} style={{ padding: '0.8rem 1.4rem' }}>
+                                        <i className="fa-solid fa-camera"></i> Launch Camera Scanner
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Recent Enquiries Table Preview */}
+                            <div className="bento-card" style={{ marginBottom: '2rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                                    <h3 style={{ margin: 0 }}>Recent Farmer Enquiries</h3>
+                                    <button className="text-btn" onClick={() => setActiveTab('enquiries')}>View All</button>
+                                </div>
+                                {enquiries.length === 0 ? (
+                                    <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem 0' }}>No incoming farmer enquiries yet.</p>
+                                ) : (
+                                    <div className="table-responsive">
+                                        <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <th style={{ padding: '0.75rem 1rem' }}>Enquiry ID</th>
+                                                    <th style={{ padding: '0.75rem 1rem' }}>Farmer</th>
+                                                    <th style={{ padding: '0.75rem 1rem' }}>Crop & Qty</th>
+                                                    <th style={{ padding: '0.75rem 1rem' }}>Offered Price</th>
+                                                    <th style={{ padding: '0.75rem 1rem' }}>Status</th>
+                                                    <th style={{ padding: '0.75rem 1rem' }}>Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {enquiries.slice(0, 4).map(eq => (
+                                                    <tr key={eq.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                        <td style={{ padding: '1rem', fontFamily: 'monospace', fontWeight: 700, color: 'var(--accent-gold)' }}>
+                                                            {eq.enquiry_code}
+                                                        </td>
+                                                        <td style={{ padding: '1rem' }}>
+                                                            <strong>{eq.farmer_name}</strong>
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{eq.farmer_phone}</div>
+                                                        </td>
+                                                        <td style={{ padding: '1rem' }}>
+                                                            <strong>{eq.crop_name}</strong>
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{eq.quantity || (eq.acres * 2)} Tons ({eq.acres} Acres)</div>
+                                                        </td>
+                                                        <td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 700 }}>
+                                                            ₹{eq.offered_price || eq.expected_price || 'Market'}
+                                                        </td>
+                                                        <td style={{ padding: '1rem' }}>
+                                                            <span className="status-badge" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }}>
+                                                                {eq.status}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ padding: '1rem' }}>
+                                                            {eq.status === 'PENDING' ? (
+                                                                <button className="primary-btn" onClick={() => handleAcceptEnquiry(eq)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+                                                                    Accept
+                                                                </button>
+                                                            ) : (
+                                                                <button className="action-btn text-btn" onClick={() => setSelectedEnquiryForQr(eq)} style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>
+                                                                    View QR
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
                         </div>
+                    )}
 
-                        <div className="stats-grid">
-                            <div className="stat-card">
-                                <div className="stat-icon revenue"><i className="fa-solid fa-cart-shopping"></i></div>
-                                <div className="stat-details">
-                                    <h3>Total Spending</h3>
-                                    <h2>₹0.00</h2>
-                                    <span className="trend neutral">No purchases yet</span>
+                    {/* ======================================================== */}
+                    {/* TAB: FARMER ENQUIRIES */}
+                    {/* ======================================================== */}
+                    {activeTab === 'enquiries' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Farmer Enquiries 📬</h2>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Review incoming crop supply proposals, accept for instant QR generation, or decline
+                                    </p>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    {['ALL', 'PENDING', 'ACCEPTED', 'LOAD_RECEIVED'].map(filter => (
+                                        <button 
+                                            key={filter} 
+                                            className={`action-btn ${enquiryFilter === filter ? 'active' : ''}`}
+                                            onClick={() => setEnquiryFilter(filter)}
+                                            style={{ fontSize: '0.8rem', padding: '0.5rem 0.9rem', background: enquiryFilter === filter ? 'var(--primary)' : 'rgba(255,255,255,0.05)', color: enquiryFilter === filter ? '#000' : 'inherit' }}
+                                        >
+                                            {filter.replace('_', ' ')}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                            <div className="stat-card">
-                                <div className="stat-icon crops"><i className="fa-solid fa-truck"></i></div>
-                                <div className="stat-details">
-                                    <h3>In Transit</h3>
-                                    <h2>0 Lots</h2>
-                                    <span className="trend neutral">All clear</span>
+
+                            {filteredEnquiries.length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+                                    <i className="fa-solid fa-inbox fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                    <h3>No Enquiries Found</h3>
+                                    <p style={{ color: 'var(--text-muted)' }}>No farmer enquiries matching the selected filter ({enquiryFilter}).</p>
                                 </div>
-                            </div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.25rem' }}>
+                                    {filteredEnquiries.map(enq => (
+                                        <div key={enq.id} className="bento-card" style={{ border: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column' }}>
+                                            {/* Header */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '1rem' }}>
+                                                <div>
+                                                    <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)', fontSize: '1rem' }}>
+                                                        {enq.enquiry_code}
+                                                    </span>
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                        {new Date(enq.created_at).toLocaleDateString('en-IN')}
+                                                    </div>
+                                                </div>
+
+                                                <span className="status-badge" style={{
+                                                    background: enq.status === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : enq.status === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                                                    color: enq.status === 'ACCEPTED' ? 'var(--primary)' : enq.status === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24',
+                                                    padding: '0.25rem 0.65rem',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: 700
+                                                }}>
+                                                    {enq.status}
+                                                </span>
+                                            </div>
+
+                                            {/* Body */}
+                                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Farmer:</span>
+                                                    <strong>{enq.farmer_name} ({enq.farmer_phone})</strong>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Crop:</span>
+                                                    <strong style={{ color: 'var(--primary)' }}>{enq.crop_name}</strong>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Quantity & Acres:</span>
+                                                    <strong>{enq.quantity || (enq.acres * 2)} Tons • {enq.acres} Acres</strong>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Farm Location:</span>
+                                                    <span>{enq.farmer_location_name || 'Coordinates Listed'}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Distance:</span>
+                                                    <span>~{enq.distance || 35} km</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Offered Price:</span>
+                                                    <strong style={{ color: 'var(--accent-gold)' }}>₹{enq.offered_price || enq.expected_price || 'Market Rate'}</strong>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Transport:</span>
+                                                    <span style={{ color: enq.transport_required ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600 }}>
+                                                        {enq.transport_required ? `Yes (${enq.vehicle_capacity || '10 Ton'} ${enq.vehicle_type || 'Truck'})` : 'No (Self Arranged)'}
+                                                    </span>
+                                                </div>
+
+                                                {enq.message && (
+                                                    <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.5rem', borderRadius: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.3rem' }}>
+                                                        "{enq.message}"
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Footer Actions */}
+                                            <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '0.6rem' }}>
+                                                {enq.status === 'PENDING' ? (
+                                                    <>
+                                                        <button 
+                                                            className="text-btn" 
+                                                            onClick={() => handleRejectEnquiry(enq)}
+                                                            style={{ flex: 1, justifyContent: 'center', padding: '0.65rem', color: 'var(--danger)' }}
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                        <button 
+                                                            className="primary-btn" 
+                                                            onClick={() => handleAcceptEnquiry(enq)}
+                                                            style={{ flex: 1.5, justifyContent: 'center', padding: '0.65rem' }}
+                                                        >
+                                                            <i className="fa-solid fa-circle-check"></i>
+                                                            Accept & QR
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <button 
+                                                        className="primary-btn" 
+                                                        onClick={() => setSelectedEnquiryForQr(enq)}
+                                                        style={{ width: '100%', justifyContent: 'center', padding: '0.65rem', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', border: '1px solid var(--primary)' }}
+                                                    >
+                                                        <i className="fa-solid fa-qrcode"></i>
+                                                        View Verification QR
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
+                    )}
 
-                        <div className="bento-grid">
-                            <div className="bento-card span-8">
-                                <div className="card-header">
-                                    <h3>Recent Market Trends</h3>
+                    {/* ======================================================== */}
+                    {/* TAB: LOADS RECEIVED */}
+                    {/* ======================================================== */}
+                    {activeTab === 'loads' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Loads Received & Verified 🚚</h2>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Complete audit log of all crops verified through digital QR scanning and accepted at gate
+                                    </p>
                                 </div>
-                                <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                                    <i className="fa-solid fa-chart-area" style={{ fontSize: '3rem', opacity: 0.2 }}></i>
-                                    <p style={{ marginLeft: '1rem' }}>Supply trends for this season will appear here.</p>
+                                <button className="primary-btn" onClick={() => setIsQrScannerOpen(true)}>
+                                    <i className="fa-solid fa-qrcode"></i> Scan Another Load
+                                </button>
+                            </div>
+
+                            {loadsReceived.length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+                                    <i className="fa-solid fa-truck-ramp-box fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                    <h3>No Loads Recorded Yet</h3>
+                                    <p style={{ color: 'var(--text-muted)', maxWidth: '450px', margin: '0.5rem auto 1.5rem' }}>
+                                        Once a farmer brings their harvest to the mill, scan their Crop Verification QR to authenticate and confirm receipt.
+                                    </p>
+                                    <button className="primary-btn" onClick={() => setIsQrScannerOpen(true)}>
+                                        Open QR Scanner
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="bento-card">
+                                    <div className="table-responsive">
+                                        <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <th style={{ padding: '1rem' }}>Enquiry ID</th>
+                                                    <th style={{ padding: '1rem' }}>Farmer</th>
+                                                    <th style={{ padding: '1rem' }}>Crop & Quantity</th>
+                                                    <th style={{ padding: '1rem' }}>Acreage</th>
+                                                    <th style={{ padding: '1rem' }}>Transport Method</th>
+                                                    <th style={{ padding: '1rem' }}>Received At</th>
+                                                    <th style={{ padding: '1rem' }}>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {loadsReceived.map(load => (
+                                                    <tr key={load.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                        <td style={{ padding: '1rem', fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                                                            {load.enquiry_code}
+                                                        </td>
+                                                        <td style={{ padding: '1rem' }}>
+                                                            <strong>{load.farmer_name}</strong>
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{load.farmer_id}</div>
+                                                        </td>
+                                                        <td style={{ padding: '1rem' }}>
+                                                            <strong style={{ color: 'var(--primary)' }}>{load.crop_name}</strong>
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{load.quantity} Tons</div>
+                                                        </td>
+                                                        <td style={{ padding: '1rem' }}>
+                                                            {load.acres || '5'} Acres
+                                                        </td>
+                                                        <td style={{ padding: '1rem' }}>
+                                                            {load.transport_method}
+                                                        </td>
+                                                        <td style={{ padding: '1rem', fontSize: '0.85rem' }}>
+                                                            {new Date(load.received_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                                                        </td>
+                                                        <td style={{ padding: '1rem' }}>
+                                                            <span className="status-badge" style={{ background: 'rgba(16, 185, 129, 0.2)', color: 'var(--primary)', fontWeight: 700 }}>
+                                                                <i className="fa-solid fa-circle-check" style={{ marginRight: '0.3rem' }}></i>
+                                                                RECEIVED
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: TRANSPORT FLEET */}
+                    {/* ======================================================== */}
+                    {activeTab === 'transport' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Inbound Transport Fleet 🚛</h2>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Real-time tracking of contracted trucks delivering verified crops to your mill
+                                    </p>
                                 </div>
                             </div>
 
-                            <div className="bento-card span-4">
-                                <div className="card-header">
-                                    <h3>Top Categories</h3>
+                            {transportRequests.length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
+                                    <i className="fa-solid fa-truck-moving fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                    <h3>No Active Transport Dispatches</h3>
+                                    <p style={{ color: 'var(--text-muted)' }}>When accepted farmer enquiries have transport enabled, vehicle tracking will show here.</p>
                                 </div>
-                                <div style={{ marginTop: '1rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
-                                        <span>Cereals</span>
-                                        <span style={{ color: 'var(--primary)' }}>High Demand</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
-                                        <span>Oilseeds</span>
-                                        <span style={{ color: '#ffb300' }}>Moderate</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0' }}>
-                                        <span>Pulses</span>
-                                        <span style={{ color: 'var(--primary)' }}>In Season</span>
-                                    </div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
+                                    {transportRequests.map(tr => (
+                                        <div key={tr.id} className="bento-card">
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                                <strong style={{ fontFamily: 'monospace', color: 'var(--accent-gold)' }}>{tr.transport_code}</strong>
+                                                <span className="status-badge" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8' }}>{tr.status}</span>
+                                            </div>
+                                            <h4>{tr.crop_name} ({tr.quantity} Tons)</h4>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                                                <div>From: {tr.pickup_address}</div>
+                                                <div>Vehicle: <strong>{tr.vehicle_number || 'Dispatching Provider'}</strong></div>
+                                                <div>Assigned Hauler: <strong>{tr.assigned_provider_name || 'Searching Fleet'}</strong></div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: MY MILLS & PRICING */}
+                    {/* ======================================================== */}
+                    {activeTab === 'mills' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.6rem' }}>My Registered Mills 🏭</h2>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Manage your processing capacity, geo-location, and dynamic buying rates
+                                    </p>
+                                </div>
+                                <button className="primary-btn" onClick={() => setIsAddMillOpen(true)}>
+                                    <i className="fa-solid fa-plus"></i> Add New Mill
+                                </button>
                             </div>
 
-                            <div className="bento-card span-12">
-                                <div className="card-header">
-                                    <h3>My Registered Mills</h3>
-                                </div>
+                            <div className="bento-card">
                                 <div className="table-responsive">
                                     <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
                                         <thead>
@@ -433,13 +772,13 @@ export default function BuyerPortal({ user, onLogout }) {
                                                     <td style={{ padding: '1rem' }}>
                                                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                                                             {mill.selectedCrops?.map(crop => (
-                                                                <span key={crop} style={{ fontSize: '0.7rem', padding: '2px 6px', background: 'rgba(0,255,136,0.1)', color: 'var(--primary)', borderRadius: '4px' }}>{crop}</span>
+                                                                <span key={crop} style={{ fontSize: '0.7rem', padding: '2px 6px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--primary)', borderRadius: '4px' }}>{crop}</span>
                                                             ))}
                                                         </div>
                                                     </td>
                                                     <td style={{ padding: '1rem' }}>{mill.capacity} TPD</td>
                                                     <td style={{ padding: '1rem' }}>
-                                                        <span className={`status-badge ${mill.status === 'pending' ? 'pending' : 'completed'}`} style={{ textTransform: 'capitalize' }}>
+                                                        <span className="status-badge" style={{ textTransform: 'capitalize' }}>
                                                             {mill.status}
                                                         </span>
                                                     </td>
@@ -459,216 +798,46 @@ export default function BuyerPortal({ user, onLogout }) {
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {activeTab === 'browse' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Browse Available Crops 🕵️‍♂️</h1>
-                                <p>Crops listed by verified farmers ready for purchase.</p>
-                            </div>
-                        </div>
-                        <div className="bento-grid">
-                            <div className="bento-card span-12" style={{ textAlign: 'center', padding: '4rem 0' }}>
-                                <i className="fa-solid fa-layer-group" style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '1.5rem', opacity: 0.5 }}></i>
-                                <h3>Connecting to Farms...</h3>
-                                <p style={{ color: 'var(--text-muted)' }}>We are currently syncing with live farmer listings. Check back in a moment.</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'orders' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>My Purchases 📦</h1>
-                                <p>Track your active and history orders.</p>
-                            </div>
-                        </div>
-                        <div className="bento-grid">
-                            <div className="bento-card span-12">
-                                <div className="table-responsive">
-                                    <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
-                                        <thead>
-                                            <tr>
-                                                <th style={{ padding: '1rem' }}>Order ID</th>
-                                                <th style={{ padding: '1rem' }}>Farmer</th>
-                                                <th style={{ padding: '1rem' }}>Crop</th>
-                                                <th style={{ padding: '1rem' }}>Qty</th>
-                                                <th style={{ padding: '1rem' }}>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr>
-                                                <td colSpan="5" style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>No orders found.</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                    {/* ======================================================== */}
+                    {/* TAB: PROFILE & SETTINGS */}
+                    {/* ======================================================== */}
+                    {activeTab === 'profile' && (
+                        <div className="bento-card" style={{ maxWidth: '600px', margin: '0 auto' }}>
+                            <h3 style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                Mill Operator Profile
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Company / Owner Name</label>
+                                    <input 
+                                        type="text" 
+                                        value={profileName} 
+                                        onChange={e => setProfileName(e.target.value)}
+                                        style={{ width: '100%', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
+                                    />
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'enquiries' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Farmer Enquiries 📬</h1>
-                                <p>Manage the supply requests sent directly by farmers.</p>
-                            </div>
-                        </div>
-                        <div className="bento-grid">
-                            <div className="bento-card span-12">
-                                <div className="table-responsive">
-                                    <table className="orders-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-                                        <thead>
-                                            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <th style={{ padding: '1rem' }}>Date</th>
-                                                <th style={{ padding: '1rem' }}>Farmer</th>
-                                                <th style={{ padding: '1rem' }}>Crop</th>
-                                                <th style={{ padding: '1rem' }}>Acres</th>
-                                                <th style={{ padding: '1rem' }}>Transport</th>
-                                                <th style={{ padding: '1rem' }}>Message</th>
-                                                <th style={{ padding: '1rem' }}>Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {loadingEnquiries ? (
-                                                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>Loading enquiries...</td></tr>
-                                            ) : enquiries.length === 0 ? (
-                                                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>No enquiries found.</td></tr>
-                                            ) : enquiries.map(enq => (
-                                                <tr key={enq.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                    <td style={{ padding: '1rem', whiteSpace: 'nowrap' }}>{enq.createdAt?.toDate ? enq.createdAt.toDate().toLocaleDateString('en-IN') : 'N/A'}</td>
-                                                    <td style={{ padding: '1rem' }}>
-                                                        <div style={{ fontWeight: 600 }}>{enq.farmerName}</div>
-                                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{enq.farmerPhone}</div>
-                                                    </td>
-                                                    <td style={{ padding: '1rem', fontWeight: 500 }}>{enq.cropName}</td>
-                                                    <td style={{ padding: '1rem' }}>{enq.acres} Acres</td>
-                                                    <td style={{ padding: '1rem' }}>
-                                                        {enq.withTransport ? (
-                                                            <span style={{ color: 'var(--primary)', backgroundColor: 'rgba(0,255,136,0.1)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem' }}>With Transport</span>
-                                                        ) : (
-                                                            <span style={{ color: '#ffb300', backgroundColor: 'rgba(255,179,0,0.1)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem' }}>No Transport</span>
-                                                        )}
-                                                    </td>
-                                                    <td style={{ padding: '1rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={enq.message}>
-                                                        {enq.message || '-'}
-                                                    </td>
-                                                    <td style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
-                                                        {enq.status === 'accepted' ? (
-                                                            <span style={{ color: 'var(--success)', fontWeight: 600 }}><i className="fa-solid fa-check"></i> Purchased</span>
-                                                        ) : enq.status === 'declined' ? (
-                                                            <span style={{ color: 'var(--danger)', fontWeight: 600 }}><i className="fa-solid fa-xmark"></i> Declined</span>
-                                                        ) : (
-                                                            <button
-                                                                className="primary-btn"
-                                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
-                                                                onClick={() => handleAcceptEnquiry(enq.id)}
-                                                            >
-                                                                Buy It
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>GST Number</label>
+                                    <input 
+                                        type="text" 
+                                        value={gstNumber} 
+                                        onChange={e => setGstNumber(e.target.value)}
+                                        style={{ width: '100%', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
+                                    />
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'profile' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Settings & Profile ⚙️</h1>
-                                <p>Update your personal information and contact details.</p>
-                            </div>
-                        </div>
-                        <div className="bento-grid">
-                            <div className="bento-card span-12" style={{ maxWidth: '600px', margin: '1rem auto' }}>
-                                <div className="card-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-                                    <h3>Personal Information</h3>
-                                </div>
-
-                                <div className="input-group" style={{ marginBottom: '1.25rem' }}>
-                                    <i className="fa-solid fa-user"></i>
-                                    <input type="text" placeholder="Owner/Company Name" value={profileName} onChange={e => setProfileName(e.target.value)} />
-                                </div>
-
-                                <div className="responsive-form-row">
-                                    <div>
-                                        <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>GST Number</label>
-                                        <div className="input-group" style={{ marginBottom: '1.25rem' }}>
-                                            <i className="fa-solid fa-file-contract"></i>
-                                            <input type="text" placeholder="15-digit GSTIN" maxLength="15" value={gstNumber} onChange={e => setGstNumber(e.target.value)} />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Business Type</label>
-                                        <div className="input-group" style={{ marginBottom: '1.25rem' }}>
-                                            <i className="fa-solid fa-briefcase"></i>
-                                            <select value={businessType} onChange={e => setBusinessType(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text-main)', width: '100%', outline: 'none' }}>
-                                                <option value="Retailer" style={{ color: '#000' }}>Retailer</option>
-                                                <option value="Wholesaler" style={{ color: '#000' }}>Wholesaler</option>
-                                                <option value="Exporter" style={{ color: '#000' }}>Exporter</option>
-                                                <option value="Broker" style={{ color: '#000' }}>Broker</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="responsive-form-row">
-                                    <div>
-                                        <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Alt. Contact</label>
-                                        <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-                                            <i className="fa-solid fa-phone"></i>
-                                            <input type="tel" placeholder="10-digit number" maxLength="10" value={profileAltPhone} onChange={e => setProfileAltPhone(e.target.value)} />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Monthly Capacity</label>
-                                        <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-                                            <i className="fa-solid fa-weight-hanging"></i>
-                                            <input type="number" placeholder="in Tons" value={buyingCapacity} onChange={e => setBuyingCapacity(e.target.value)} />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <button className="primary-btn" style={{ width: '100%', justifyContent: 'center' }} onClick={handleUpdateProfile} disabled={isSavingProfile}>
-                                    {isSavingProfile ? 'Syncing with Buyer Log...' : 'Synchronize Buyer Profile'}
-                                </button>
-                            </div>
-
-                            <div className="bento-card span-12" style={{ maxWidth: '600px', margin: '0 auto 1rem auto' }}>
-                                <div className="card-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-                                    <h3>Login & Security</h3>
-                                </div>
-                                <div className="input-group" style={{ marginBottom: '1.25rem' }}>
-                                    <i className="fa-solid fa-mobile-screen"></i>
-                                    <input type="tel" placeholder="Login Phone" maxLength="10" value={newPhone} onChange={e => setNewPhone(e.target.value)} />
-                                </div>
-                                <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-                                    <i className="fa-solid fa-lock"></i>
-                                    <input type="password" placeholder="6-digit PIN" maxLength="6" value={newPin} onChange={e => setNewPin(e.target.value)} />
-                                </div>
-                                <button className="primary-btn" style={{ width: '100%', justifyContent: 'center', background: 'transparent', color: 'var(--primary)', border: '1px solid var(--primary)' }} onClick={handleUpdateSecurity} disabled={isUpdatingSecurity}>
-                                    {isUpdatingSecurity ? 'Updating...' : 'Update Security Settings'}
+                                <button className="primary-btn" onClick={handleUpdateProfile} disabled={isSavingProfile} style={{ justifyContent: 'center', marginTop: '0.5rem' }}>
+                                    {isSavingProfile ? 'Saving...' : 'Save Profile Changes'}
                                 </button>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
+
+                </div>
             </main>
 
+            {/* MODALS */}
             {isAddMillOpen && (
                 <AddMillModal
                     user={user}
@@ -682,6 +851,26 @@ export default function BuyerPortal({ user, onLogout }) {
                     mill={selectedMillForPricing}
                     onClose={() => setSelectedMillForPricing(null)}
                     onUpdated={fetchMills}
+                />
+            )}
+
+            {/* QR SCANNER MODAL */}
+            {isQrScannerOpen && (
+                <QrScannerModal
+                    loggedInMill={activeMill}
+                    onClose={() => setIsQrScannerOpen(false)}
+                    onVerificationSuccess={() => {
+                        refreshAllData();
+                        setActiveTab('loads');
+                    }}
+                />
+            )}
+
+            {/* QR CODE MODAL FOR ACCEPTED ENQUIRIES */}
+            {selectedEnquiryForQr && (
+                <QrCodeModal
+                    enquiry={selectedEnquiryForQr}
+                    onClose={() => setSelectedEnquiryForQr(null)}
                 />
             )}
         </div>

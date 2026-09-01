@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabase';
+import { kisanService } from '../services/kisanService';
 import { fetchWeatherByCoords, fetchWeatherByCity, getWeatherIcon } from '../services/weather';
 import AddCropModal from './AddCropModal';
 import SendEnquiryModal from './SendEnquiryModal';
+import QrCodeModal from './QrCodeModal';
+import KisanLogo from './KisanLogo';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -16,9 +19,10 @@ L.Icon.Default.mergeOptions({
 
 export default function FarmerPortal({ user, onLogout }) {
     const [activeTab, setActiveTabState] = useState(() => {
-        return localStorage.getItem('agri_active_tab') || 'dashboard';
+        return localStorage.getItem('kisan_active_tab') || localStorage.getItem('agri_active_tab') || 'dashboard';
     });
     const setActiveTab = (tab) => {
+        localStorage.setItem('kisan_active_tab', tab);
         localStorage.setItem('agri_active_tab', tab);
         setActiveTabState(tab);
     };
@@ -48,7 +52,13 @@ export default function FarmerPortal({ user, onLogout }) {
     const [selectedCropForSearch, setSelectedCropForSearch] = useState(null);
     const [selectedMillForEnquiry, setSelectedMillForEnquiry] = useState(null);
 
-    // Orders State
+    // Enquiry, QR & Transport States
+    const [enquiries, setEnquiries] = useState([]);
+    const [transportRequests, setTransportRequests] = useState([]);
+    const [selectedEnquiryForQr, setSelectedEnquiryForQr] = useState(null);
+    const [loadingEnquiries, setLoadingEnquiries] = useState(false);
+
+    // Orders State (legacy compatibility)
     const [orders, setOrders] = useState([]);
     const [expandedMapOrderId, setExpandedMapOrderId] = useState(null);
 
@@ -62,7 +72,6 @@ export default function FarmerPortal({ user, onLogout }) {
                 }
             });
         } else if (crops.length === 0) {
-            // fallback
             fetchWeatherByCity('Hyderabad').then(wData => {
                 if (wData) setWeather(wData);
             });
@@ -112,11 +121,19 @@ export default function FarmerPortal({ user, onLogout }) {
         }
     };
 
-    useEffect(() => {
-        fetchCrops();
-        fetchOrders();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    const fetchEnquiriesData = async () => {
+        setLoadingEnquiries(true);
+        try {
+            const list = await kisanService.getEnquiries({ farmerPhone: user.phone });
+            setEnquiries(list);
+            const reqs = kisanService.getTransportRequests({ farmerPhone: user.phone });
+            setTransportRequests(reqs);
+        } catch (e) {
+            console.error("Error fetching farmer enquiries:", e);
+        } finally {
+            setLoadingEnquiries(false);
+        }
+    };
 
     const fetchOrders = async () => {
         try {
@@ -151,6 +168,19 @@ export default function FarmerPortal({ user, onLogout }) {
         }
     };
 
+    useEffect(() => {
+        fetchCrops();
+        fetchOrders();
+        fetchEnquiriesData();
+
+        const unsub = kisanService.subscribe(() => {
+            fetchEnquiriesData();
+        });
+
+        return () => unsub();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const handleSaveCrop = async (cropData) => {
         try {
             const dataToSave = {
@@ -183,10 +213,7 @@ export default function FarmerPortal({ user, onLogout }) {
             };
 
             setCrops(prev => [...prev, mappedNewCrop]);
-
-            // Update weather dropdown selection to the new crop
             setSelectedWeatherLocation(mappedNewCrop);
-
             alert(`Successfully saved crop: ${cropData.cropName} at ${cropData.locationName}`);
         } catch (error) {
             console.error(error);
@@ -229,73 +256,23 @@ export default function FarmerPortal({ user, onLogout }) {
     };
 
     const handleUpdateSecurity = async () => {
-        if (!newPhone || newPhone.length !== 10 || isNaN(newPhone)) return alert("Please enter a valid 10-digit phone number.");
-        if (!newPin || newPin.length !== 6 || isNaN(newPin)) return alert("Please enter a valid 6-digit PIN.");
+        if (newPhone.length !== 10 || isNaN(newPhone)) {
+            return alert("Phone number must be exactly 10 digits.");
+        }
+        if (newPin.length < 4 || isNaN(newPin)) {
+            return alert("PIN must be 4 to 6 digits.");
+        }
 
         setIsUpdatingSecurity(true);
         try {
-            const isPhoneChanged = newPhone !== user.phone;
+            const { error } = await supabase
+                .from(`${user.role}s`)
+                .update({ phone: newPhone, pin: newPin })
+                .eq('phone', user.phone);
 
-            if (isPhoneChanged) {
-                // Check if new phone already exists
-                const { data: existingUser, error: checkError } = await supabase
-                    .from(`${user.role}s`)
-                    .select('phone')
-                    .eq('phone', newPhone)
-                    .maybeSingle();
-
-                if (checkError) throw checkError;
-
-                if (existingUser) {
-                    setIsUpdatingSecurity(false);
-                    return alert("This new phone number is already registered.");
-                }
-
-                // Create new user doc
-                const newUserData = {
-                    phone: newPhone,
-                    pin: newPin,
-                    role: user.role,
-                    name: profileName,
-                    altPhone: profileAltPhone,
-                    created_at: new Date().toISOString()
-                };
-
-                const { error: createError } = await supabase
-                    .from(`${user.role}s`)
-                    .insert(newUserData);
-
-                if (createError) throw createError;
-
-                // Migrate crops
-                const { error: migrateError } = await supabase
-                    .from('crops')
-                    .update({ user_phone: newPhone })
-                    .eq('user_phone', user.phone);
-
-                if (migrateError) throw migrateError;
-
-                // Delete old user doc
-                const { error: deleteError } = await supabase
-                    .from(`${user.role}s`)
-                    .delete()
-                    .eq('phone', user.phone);
-
-                if (deleteError) throw deleteError;
-
-                alert("Phone number changed successfully! Please log in again with your new credentials.");
-                onLogout(); // Force logout so they login with new phone
-            } else {
-                // Just updating PIN
-                const { error: updateError } = await supabase
-                    .from(`${user.role}s`)
-                    .update({ pin: newPin })
-                    .eq('phone', user.phone);
-
-                if (updateError) throw updateError;
-                alert("PIN updated successfully!");
-                user.pin = newPin; // update local ref
-            }
+            if (error) throw error;
+            alert("Security credentials updated! Please log in with your new phone.");
+            onLogout();
         } catch (error) {
             console.error(error);
             alert("Error updating security settings");
@@ -305,21 +282,20 @@ export default function FarmerPortal({ user, onLogout }) {
     };
 
     const calculateDistance = (lat1, lon1, lat2, lon2) => {
-        const R = 6371; // Radius of the earth in km
+        const R = 6371; // km
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
             Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c; // Distance in km
+        return R * c;
     };
 
     const handleSearchMills = async (crop) => {
         setSelectedCropForSearch(crop);
         setIsSearchingMills(true);
         try {
-            // Find all verified mills that buy this crop (selectedCrops contains the cropName)
             const { data: allMills, error } = await supabase
                 .from('mills')
                 .select('*')
@@ -345,7 +321,6 @@ export default function FarmerPortal({ user, onLogout }) {
                 addedAt: m.created_at
             }));
 
-            // Calculate distance for each and sort
             const withDistance = mappedMills.map(mill => ({
                 ...mill,
                 distance: calculateDistance(crop.latitude, crop.longitude, mill.latitude, mill.longitude)
@@ -359,22 +334,29 @@ export default function FarmerPortal({ user, onLogout }) {
         }
     };
 
-    // Calculate dynamic values
+    const handleAcceptTransportQuote = (quoteId) => {
+        kisanService.acceptTransportQuote(quoteId, 'farmers');
+        alert("Transport quote accepted! The hauler has been assigned to your load.");
+        fetchEnquiriesData();
+    };
+
+    // Filter accepted enquiries with QR codes available
+    const acceptedEnquiries = enquiries.filter(e => e.status === 'ACCEPTED' || e.status === 'LOAD_RECEIVED');
+
     const cropCountText = crops.length > 1 ? `${crops.length} Lots` : crops.length === 1 ? crops[0].cropName : '0 Lots';
     const cropLocationText = crops.length > 1 ? `${crops[crops.length - 1].cropName} & more` : crops.length === 1 ? crops[0].locationName : 'Add crops to track';
     const locationStatusClass = crops.length > 0 ? 'trend up' : 'trend neutral';
 
     return (
         <div className="app-container" style={{ display: 'flex' }}>
-            {/* Sidebar Overlay for Mobile */}
             {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
 
             {/* Sidebar */}
             <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
-                <div className="logo">
-                    <i className="fa-solid fa-leaf"></i>
-                    <span>AgriConnect</span>
+                <div className="logo" style={{ marginBottom: '2rem' }}>
+                    <KisanLogo size="md" />
                 </div>
+
                 <nav className="nav-menu">
                     <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-house"></i>
@@ -384,27 +366,46 @@ export default function FarmerPortal({ user, onLogout }) {
                         <i className="fa-solid fa-seedling"></i>
                         <span>My Crops</span>
                     </a>
+                    <a className={`nav-item ${activeTab === 'mills' ? 'active' : ''}`} onClick={() => { setActiveTab('mills'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-industry"></i>
+                        <span>Nearby Mills</span>
+                    </a>
+                    <a className={`nav-item ${activeTab === 'enquiries' ? 'active' : ''}`} onClick={() => { setActiveTab('enquiries'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-paper-plane"></i>
+                        <span>My Enquiries</span>
+                        {enquiries.length > 0 && (
+                            <span className="badge" style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem' }}>
+                                {enquiries.length}
+                            </span>
+                        )}
+                    </a>
+                    <a className={`nav-item ${activeTab === 'qrcodes' ? 'active' : ''}`} onClick={() => { setActiveTab('qrcodes'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-qrcode" style={{ color: 'var(--primary)' }}></i>
+                        <span style={{ color: 'var(--primary)', fontWeight: 700 }}>My QR Codes</span>
+                        {acceptedEnquiries.length > 0 && (
+                            <span className="badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
+                                {acceptedEnquiries.length}
+                            </span>
+                        )}
+                    </a>
+                    <a className={`nav-item ${activeTab === 'loadstatus' ? 'active' : ''}`} onClick={() => { setActiveTab('loadstatus'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-timeline"></i>
+                        <span>Load Status</span>
+                    </a>
+                    <a className={`nav-item ${activeTab === 'transport' ? 'active' : ''}`} onClick={() => { setActiveTab('transport'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-truck-fast"></i>
+                        <span>Transport</span>
+                    </a>
                     <a className={`nav-item ${activeTab === 'market' ? 'active' : ''}`} onClick={() => { setActiveTab('market'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-chart-line"></i>
                         <span>Market Prices</span>
-                    </a>
-                    <a className={`nav-item ${activeTab === 'mills' ? 'active' : ''}`} onClick={() => { setActiveTab('mills'); setIsSidebarOpen(false); }}>
-                        <i className="fa-solid fa-industry"></i>
-                        <span>Mills Near Me</span>
-                    </a>
-                    <a className={`nav-item ${activeTab === 'logistics' ? 'active' : ''}`} onClick={() => { setActiveTab('logistics'); setIsSidebarOpen(false); }}>
-                        <i className="fa-solid fa-truck-fast"></i>
-                        <span>Logistics</span>
-                    </a>
-                    <a className={`nav-item ${activeTab === 'finances' ? 'active' : ''}`} onClick={() => { setActiveTab('finances'); setIsSidebarOpen(false); }}>
-                        <i className="fa-solid fa-file-invoice-dollar"></i>
-                        <span>Finances</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { setActiveTab('profile'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-user-gear"></i>
                         <span>Profile</span>
                     </a>
                 </nav>
+
                 <div className="sidebar-bottom">
                     <a className="nav-item logout" onClick={onLogout}>
                         <i className="fa-solid fa-arrow-right-from-bracket"></i>
@@ -426,239 +427,208 @@ export default function FarmerPortal({ user, onLogout }) {
                         </button>
                         <div className="search-bar">
                             <i className="fa-solid fa-search"></i>
-                            <input type="text" placeholder="Search crops, prices, alerts..." />
+                            <input type="text" placeholder="Search crops, prices, enquiries..." />
                         </div>
                     </div>
 
-                    <div className="header-actions" style={{ alignItems: 'center' }}>
+                    <div className="header-actions" style={{ alignItems: 'center', gap: '1rem' }}>
+                        {acceptedEnquiries.length > 0 && (
+                            <button 
+                                className="primary-btn" 
+                                onClick={() => setActiveTab('qrcodes')}
+                                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', borderRadius: '0.75rem' }}
+                            >
+                                <i className="fa-solid fa-qrcode"></i>
+                                View Verification QR ({acceptedEnquiries.length})
+                            </button>
+                        )}
+
                         <div className="header-datetime">
                             <div style={{ fontWeight: 600, color: 'var(--text)' }}>
                                 {currentTime.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })}
                             </div>
                             <div>{currentTime.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</div>
                         </div>
+
                         <div className="user-profile">
-                            <div className="profile-img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', color: 'var(--primary)', fontSize: '1.5rem', width: '45px', height: '45px', borderRadius: '50%' }}>
+                            <div className="profile-img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', color: 'var(--primary)', fontSize: '1.5rem', width: '42px', height: '42px', borderRadius: '50%' }}>
                                 <i className="fa-solid fa-user"></i>
                             </div>
                             <div className="user-info">
                                 <h4>{profileName || user.phone}</h4>
-                                <p>Verified {user.role.charAt(0).toUpperCase() + user.role.slice(1)}</p>
+                                <p>Verified Farmer</p>
                             </div>
                         </div>
                     </div>
                 </header>
 
-                {activeTab === 'dashboard' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Good Day, {profileName || 'Farmer'}! 🌤️</h1>
-                                <p>Here's what's happening on your farm today.</p>
-                            </div>
-                            <button className="primary-btn" onClick={() => setIsAddCropOpen(true)}>
-                                <i className="fa-solid fa-plus"></i> Add New Crop
-                            </button>
-                        </div>
+                <div className="dashboard-content" style={{ padding: '2rem 1.5rem' }}>
 
-                        <div className="stats-grid">
-                            <div className="stat-card">
-                                <div className="stat-icon revenue"><i className="fa-solid fa-wallet"></i></div>
-                                <div className="stat-details">
-                                    <h3>Total Revenue</h3>
-                                    <h2>₹0</h2>
-                                    <span className="trend neutral">No data yet</span>
+                    {/* ======================================================== */}
+                    {/* TAB: DASHBOARD */}
+                    {/* ======================================================== */}
+                    {activeTab === 'dashboard' && (
+                        <div className="dashboard view-section" style={{ display: 'block' }}>
+                            <div className="welcome-section">
+                                <div>
+                                    <h1>Good Day, {profileName || 'Kisan'}! 🌾</h1>
+                                    <p>Connected directly to mills, transparent grain discovery, and instant QR verification.</p>
                                 </div>
-                            </div>
-                            <div className="stat-card">
-                                <div className="stat-icon crops"><i className="fa-solid fa-wheat-awn"></i></div>
-                                <div className="stat-details">
-                                    <h3>Active Crops</h3>
-                                    <h2>{cropCountText}</h2>
-                                    <span className={locationStatusClass}>{cropLocationText}</span>
-                                </div>
-                            </div>
-                            <div className="stat-card">
-                                <div className="stat-icon orders"><i className="fa-solid fa-box-open"></i></div>
-                                <div className="stat-details">
-                                    <h3>Active Orders</h3>
-                                    <h2>{orders.length} Orders</h2>
-                                    <span className={orders.length > 0 ? "trend up" : "trend neutral"}>
-                                        {orders.length > 0 ? "Crops purchased!" : "No recent orders"}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bento-grid">
-                            {/* Weather Forecast */}
-                            <div className="bento-card weather-card">
-                                <div className="card-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '1rem' }}>
-                                    <h3 style={{ marginBottom: '-0.5rem' }}>Farm Weather</h3>
-                                    <div className="location-selector" style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '0.5rem', background: 'var(--bg-secondary)', padding: '0.5rem 1rem', borderRadius: '0.5rem' }}>
-                                        <i className="fa-solid fa-location-dot" style={{ color: 'var(--primary)' }}></i>
-                                        <select
-                                            value={selectedWeatherLocation?.id || ''}
-                                            onChange={(e) => setSelectedWeatherLocation(crops.find(c => c.id === e.target.value))}
-                                            style={{ border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', color: 'var(--text)', flex: 1, cursor: 'pointer', fontSize: '0.95rem' }}
-                                        >
-                                            {crops.length === 0 ? (
-                                                <option value="" disabled style={{ color: '#000', background: '#fff' }}>Hyderabad (Default)</option>
-                                            ) : (
-                                                crops.map(c => (
-                                                    <option key={c.id} value={c.id} style={{ color: '#000', background: '#fff' }}>{c.cropName} - {c.locationName}</option>
-                                                ))
-                                            )}
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="current-weather">
-                                    <i className={`fa-solid ${getWeatherIcon(weather?.weather[0]?.id || 800)}`} style={{ fontSize: '3rem', color: '#ffb300' }}></i>
-                                    <div className="temp">
-                                        <h2>{weather ? `${Math.round(weather.main.temp)}°C` : '--'}</h2>
-                                        <p>{weather?.weather[0]?.main || '--'}</p>
-                                    </div>
-                                </div>
-                                <div className="weather-details">
-                                    <div className="w-detail">
-                                        <span>Humidity</span>
-                                        <strong>{weather ? `${weather.main.humidity}%` : '--'}</strong>
-                                    </div>
-                                    <div className="w-detail">
-                                        <span>Wind</span>
-                                        <strong>{weather ? `${Math.round(weather.wind.speed)} km/h` : '--'}</strong>
-                                    </div>
-                                </div>
-                                {weather?.forecast && (
-                                    <div className="forecast" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                                        {weather.forecast.map((day, idx) => (
-                                            <div className="f-day" key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>{day.dayName}</span>
-                                                <i className={`fa-solid ${getWeatherIcon(day.weathercode)}`} style={{ color: 'var(--text)', fontSize: '1.2rem' }}></i>
-                                                <span style={{ fontWeight: 600 }}>{day.tempMax}°</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                <button className="primary-btn" onClick={() => setIsAddCropOpen(true)}>
+                                    <i className="fa-solid fa-plus"></i> Add New Crop
+                                </button>
                             </div>
 
-                            {/* Market Prices Widget */}
-                            <div className="bento-card market-prices">
-                                <div className="card-header">
-                                    <h3>Live Market Prices</h3>
-                                    <button className="text-btn" onClick={() => setActiveTab('market')}>View All</button>
+                            <div className="stats-grid">
+                                <div className="stat-card">
+                                    <div className="stat-icon crops"><i className="fa-solid fa-wheat-awn"></i></div>
+                                    <div className="stat-details">
+                                        <h3>Active Crops</h3>
+                                        <h2>{cropCountText}</h2>
+                                        <span className={locationStatusClass}>{cropLocationText}</span>
+                                    </div>
                                 </div>
-                                <div className="prices-list" style={{ marginTop: '1rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
-                                        <span>Paddy (Rice)</span>
-                                        <div style={{ textAlign: 'right' }}>
-                                            <div style={{ fontWeight: 600 }}>₹2,250</div>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>+2.5%</span>
+                                <div className="stat-card">
+                                    <div className="stat-icon orders"><i className="fa-solid fa-paper-plane"></i></div>
+                                    <div className="stat-details">
+                                        <h3>Sent Enquiries</h3>
+                                        <h2>{enquiries.length}</h2>
+                                        <span className="trend neutral">{enquiries.filter(e => e.status === 'ACCEPTED').length} Accepted</span>
+                                    </div>
+                                </div>
+                                <div className="stat-card">
+                                    <div className="stat-icon revenue"><i className="fa-solid fa-qrcode"></i></div>
+                                    <div className="stat-details">
+                                        <h3>Verification QRs</h3>
+                                        <h2>{acceptedEnquiries.length} Ready</h2>
+                                        <span className="trend up">Scan-ready for delivery</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Active QR Quick Access Card */}
+                            {acceptedEnquiries.length > 0 && (
+                                <div className="bento-card" style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(245, 158, 11, 0.1) 100%)', border: '1px solid var(--primary)', marginBottom: '2rem', padding: '1.5rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                                                GATE DELIVERY READY
+                                            </span>
+                                            <h3 style={{ margin: '0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <i className="fa-solid fa-qrcode" style={{ color: 'var(--primary)' }}></i>
+                                                Enquiry {acceptedEnquiries[0].enquiry_code} Accepted!
+                                            </h3>
+                                            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                                {acceptedEnquiries[0].mill_name} accepted your {acceptedEnquiries[0].crop_name} load. Present your QR at the mill gate.
+                                            </p>
+                                        </div>
+                                        <button className="primary-btn" onClick={() => setSelectedEnquiryForQr(acceptedEnquiries[0])} style={{ padding: '0.75rem 1.25rem' }}>
+                                            <i className="fa-solid fa-qrcode"></i> Show Verification QR
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Weather & Live Prices Grid */}
+                            <div className="bento-grid">
+                                <div className="bento-card weather-card">
+                                    <div className="card-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '1rem' }}>
+                                        <h3 style={{ marginBottom: '-0.5rem' }}>Farm Weather</h3>
+                                        <div className="location-selector" style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '0.5rem', background: 'var(--bg-secondary)', padding: '0.5rem 1rem', borderRadius: '0.5rem' }}>
+                                            <i className="fa-solid fa-location-dot" style={{ color: 'var(--primary)' }}></i>
+                                            <select
+                                                value={selectedWeatherLocation?.id || ''}
+                                                onChange={(e) => setSelectedWeatherLocation(crops.find(c => c.id === e.target.value))}
+                                                style={{ border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', color: 'var(--text)', flex: 1, cursor: 'pointer', fontSize: '0.95rem' }}
+                                            >
+                                                {crops.length === 0 ? (
+                                                    <option value="" disabled style={{ color: '#000', background: '#fff' }}>Hyderabad (Default)</option>
+                                                ) : (
+                                                    crops.map(c => (
+                                                        <option key={c.id} value={c.id} style={{ color: '#000', background: '#fff' }}>{c.cropName} - {c.locationName}</option>
+                                                    ))
+                                                )}
+                                            </select>
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
-                                        <span>Maize</span>
-                                        <div style={{ textAlign: 'right' }}>
-                                            <div style={{ fontWeight: 600 }}>₹1,960</div>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--danger)' }}>-1.2%</span>
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0' }}>
-                                        <span>Cotton</span>
-                                        <div style={{ textAlign: 'right' }}>
-                                            <div style={{ fontWeight: 600 }}>₹7,100</div>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>+0.8%</span>
+                                    <div className="current-weather">
+                                        <i className={`fa-solid ${getWeatherIcon(weather?.weather[0]?.id || 800)}`} style={{ fontSize: '3rem', color: '#ffb300' }}></i>
+                                        <div className="temp">
+                                            <h2>{weather ? `${Math.round(weather.main.temp)}°C` : '--'}</h2>
+                                            <p>{weather?.weather[0]?.main || '--'}</p>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Upcoming Tasks Widget */}
-                            <div className="bento-card upcoming-tasks">
-                                <div className="card-header">
-                                    <h3>Upcoming Tasks</h3>
-                                    <button className="text-btn">Manage</button>
-                                </div>
-                                <div className="tasks-list" style={{ marginTop: '1rem' }}>
-                                    {orders.length > 0 && orders.map((order, idx) => (
-                                        <div key={`order-${idx}`} style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', background: 'rgba(0,255,136,0.1)', padding: '0.8rem', borderRadius: '0.5rem' }}>
-                                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success)' }}></div>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--success)' }}>Order Purchased!</div>
-                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>{order.millName} purchased your {order.cropName}</div>
+                                <div className="bento-card market-prices">
+                                    <div className="card-header">
+                                        <h3>Live Market Rates</h3>
+                                        <button className="text-btn" onClick={() => setActiveTab('market')}>View All</button>
+                                    </div>
+                                    <div className="prices-list" style={{ marginTop: '1rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                                            <span>Paddy (Rice)</span>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontWeight: 600 }}>₹2,250</div>
+                                                <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>+2.5%</span>
                                             </div>
                                         </div>
-                                    ))}
-                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-                                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)' }}></div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '0.95rem', fontWeight: 500 }}>Harvest paddy from Plot B</div>
-                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Due in 2 days</div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                                            <span>Maize</span>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontWeight: 600 }}>₹1,960</div>
+                                                <span style={{ fontSize: '0.8rem', color: 'var(--danger)' }}>-1.2%</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-                                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ffb300' }}></div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '0.95rem', fontWeight: 500 }}>Fertilizer application (Maize)</div>
-                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Scheduled for tomorrow</div>
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-muted)' }}></div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '0.95rem', fontWeight: 500 }}>Check market prices for Cotton</div>
-                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Weekly review</div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0' }}>
+                                            <span>Cotton</span>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontWeight: 600 }}>₹7,100</div>
+                                                <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>+0.8%</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {activeTab === 'crops' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>My Crops 🌱</h1>
-                                <p>Manage all your active crops and locations here.</p>
-                            </div>
-                        </div>
-                        <div className="bento-grid">
-                            <div className="bento-card span-12">
-                                <div className="card-header">
-                                    <h3>Active Crops List</h3>
+                    {/* ======================================================== */}
+                    {/* TAB: MY CROPS */}
+                    {/* ======================================================== */}
+                    {activeTab === 'crops' && (
+                        <div className="dashboard view-section" style={{ display: 'block' }}>
+                            <div className="welcome-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <h1>My Crops 🌱</h1>
+                                    <p>Manage all your active crops and locations here.</p>
                                 </div>
+                                <button className="primary-btn" onClick={() => setIsAddCropOpen(true)}>
+                                    <i className="fa-solid fa-plus"></i> Add Crop
+                                </button>
+                            </div>
+                            <div className="bento-card">
                                 <div className="table-responsive">
-                                    <table className="orders-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                                    <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
                                         <thead>
                                             <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Crop Name</th>
-                                                <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Location</th>
-                                                <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Acres</th>
-                                                <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Date Added</th>
-                                                <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Action</th>
+                                                <th style={{ padding: '1rem' }}>Crop Name</th>
+                                                <th style={{ padding: '1rem' }}>Location</th>
+                                                <th style={{ padding: '1rem' }}>Acres</th>
+                                                <th style={{ padding: '1rem' }}>Action</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {loadingCrops ? (
-                                                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem 0' }}>Loading...</td></tr>
+                                                <tr><td colSpan="4" style={{ textAlign: 'center', padding: '2rem' }}>Loading crops...</td></tr>
                                             ) : crops.length === 0 ? (
-                                                <tr><td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem 0' }}>You have no active crops. Click "Add New Crop" from the dashboard to get started.</td></tr>
+                                                <tr><td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No crops added yet.</td></tr>
                                             ) : crops.map(c => (
                                                 <tr key={c.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <td style={{ padding: '1rem', fontWeight: 600 }}>{c.cropName}</td>
+                                                    <td style={{ padding: '1rem', color: 'var(--text-muted)' }}><i className="fa-solid fa-location-dot"></i> {c.locationName}</td>
+                                                    <td style={{ padding: '1rem' }}>{c.acres} Acres</td>
                                                     <td style={{ padding: '1rem' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(0,255,136,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
-                                                                <i className="fa-solid fa-leaf"></i>
-                                                            </div>
-                                                            <span style={{ fontWeight: 500 }}>{c.cropName}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td style={{ padding: '1rem', color: 'var(--text-muted)' }}><i className="fa-solid fa-location-dot" style={{ color: 'var(--primary)' }}></i> {c.locationName}</td>
-                                                    <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{c.acres} Acres</td>
-                                                    <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{c.addedAt?.toDate ? c.addedAt.toDate().toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</td>
-                                                    <td style={{ padding: '1rem', textAlign: 'center' }}>
                                                         <button className="action-btn text-btn" onClick={() => handleDeleteCrop(c.id)} style={{ color: 'var(--danger)' }}>
                                                             <i className="fa-solid fa-trash"></i>
                                                         </button>
@@ -670,26 +640,447 @@ export default function FarmerPortal({ user, onLogout }) {
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {activeTab === 'market' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Live Market Prices 📈</h1>
-                                <p>Stay updated with the latest crop prices in major markets.</p>
-                            </div>
-                        </div>
-                        <div className="bento-grid">
-                            <div className="bento-card span-12">
-                                <div className="card-header">
-                                    <h3>Agricultural Commodity Prices</h3>
-                                    <div className="search-bar" style={{ maxWidth: '300px' }}>
-                                        <i className="fa-solid fa-filter"></i>
-                                        <input type="text" placeholder="Filter by crop..." />
-                                    </div>
+                    {/* ======================================================== */}
+                    {/* TAB: NEARBY MILLS */}
+                    {/* ======================================================== */}
+                    {activeTab === 'mills' && (
+                        <div className="dashboard view-section" style={{ display: 'block' }}>
+                            <div className="welcome-section">
+                                <div>
+                                    <h1>Nearby Mills 🏭</h1>
+                                    <p>Select your crop to search verified processing mills and send direct enquiries.</p>
                                 </div>
+                            </div>
+
+                            <div className="bento-card" style={{ marginBottom: '2rem' }}>
+                                <h3 style={{ margin: '0 0 1rem 0' }}>Select Crop to Search Mills</h3>
+                                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                    {crops.map(c => (
+                                        <button
+                                            key={c.id}
+                                            className={`primary-btn ${selectedCropForSearch?.id === c.id ? '' : 'text-btn'}`}
+                                            style={{
+                                                background: selectedCropForSearch?.id === c.id ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
+                                                color: selectedCropForSearch?.id === c.id ? '#000' : 'var(--text-main)',
+                                                border: selectedCropForSearch?.id === c.id ? 'none' : '1px solid var(--border-color)'
+                                            }}
+                                            onClick={() => handleSearchMills(c)}
+                                        >
+                                            <i className="fa-solid fa-wheat-awn"></i> {c.cropName} ({c.locationName})
+                                        </button>
+                                    ))}
+                                    {crops.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Add a crop first to search matching mills.</p>}
+                                </div>
+                            </div>
+
+                            {selectedCropForSearch && (
+                                <div>
+                                    <h3 style={{ marginBottom: '1.25rem' }}>Verified Mills Buying {selectedCropForSearch.cropName}</h3>
+                                    {isSearchingMills ? (
+                                        <div style={{ padding: '2rem', textAlign: 'center' }}>Searching mills...</div>
+                                    ) : nearbyMills.length === 0 ? (
+                                        <div className="bento-card" style={{ textAlign: 'center', padding: '3rem' }}>
+                                            <p style={{ color: 'var(--text-muted)' }}>No mills currently buying this crop.</p>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                                            {nearbyMills.map(mill => (
+                                                <div key={mill.id} className="bento-card" style={{ border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                                                        <h3 style={{ margin: 0, fontSize: '1.15rem' }}>{mill.millName}</h3>
+                                                        <span style={{ color: 'var(--primary)', fontWeight: 700 }}>~{mill.distance.toFixed(1)} km</span>
+                                                    </div>
+                                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                                                        <i className="fa-solid fa-location-dot"></i> {mill.locationName}
+                                                    </div>
+                                                    <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+                                                        <div>Capacity: <strong>{mill.capacity} TPD</strong></div>
+                                                        <div>Cold Storage: <strong>{mill.hasColdStorage ? 'YES' : 'NO'}</strong></div>
+                                                        {mill.prices?.[selectedCropForSearch.cropName] && (
+                                                            <div style={{ color: 'var(--primary)', fontWeight: 700, marginTop: '0.3rem' }}>
+                                                                Rate: ₹{mill.prices[selectedCropForSearch.cropName]} / Quintal
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <button 
+                                                        className="primary-btn" 
+                                                        onClick={() => setSelectedMillForEnquiry(mill)}
+                                                        style={{ width: '100%', justifyContent: 'center' }}
+                                                    >
+                                                        <i className="fa-solid fa-paper-plane"></i>
+                                                        Send Enquiry
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: MY ENQUIRIES */}
+                    {/* ======================================================== */}
+                    {activeTab === 'enquiries' && (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.6rem' }}>My Sent Enquiries 📬</h2>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Track mill review, acceptance, and generated verification QR codes
+                                    </p>
+                                </div>
+                            </div>
+
+                            {enquiries.length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+                                    <i className="fa-solid fa-inbox fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                    <h3>No Enquiries Sent Yet</h3>
+                                    <p style={{ color: 'var(--text-muted)', margin: '0.5rem 0 1.5rem' }}>
+                                        Search nearby mills and click "Send Enquiry" to propose a harvest sale.
+                                    </p>
+                                    <button className="primary-btn" onClick={() => setActiveTab('mills')}>
+                                        Search Nearby Mills
+                                    </button>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
+                                    {enquiries.map(enq => (
+                                        <div key={enq.id} className="bento-card" style={{ border: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                                <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                                                    {enq.enquiry_code}
+                                                </span>
+                                                <span className="status-badge" style={{
+                                                    background: enq.status === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : enq.status === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                                                    color: enq.status === 'ACCEPTED' ? 'var(--primary)' : enq.status === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24'
+                                                }}>
+                                                    {enq.status}
+                                                </span>
+                                            </div>
+
+                                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.85rem' }}>
+                                                <div>Mill: <strong>{enq.mill_name}</strong></div>
+                                                <div>Crop: <strong style={{ color: 'var(--primary)' }}>{enq.crop_name}</strong></div>
+                                                <div>Quantity: <strong>{enq.quantity || (enq.acres * 2)} Tons ({enq.acres} Acres)</strong></div>
+                                                <div>Expected Price: <strong>₹{enq.expected_price || 'Market'}</strong></div>
+                                                <div>Transport: <span>{enq.transport_required ? '✓ Requested' : 'Self Arranged'}</span></div>
+                                                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Sent: {new Date(enq.created_at).toLocaleDateString('en-IN')}</div>
+                                            </div>
+
+                                            <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+                                                {enq.status === 'ACCEPTED' || enq.status === 'LOAD_RECEIVED' ? (
+                                                    <button 
+                                                        className="primary-btn" 
+                                                        onClick={() => setSelectedEnquiryForQr(enq)}
+                                                        style={{ width: '100%', justifyContent: 'center', padding: '0.65rem' }}
+                                                    >
+                                                        <i className="fa-solid fa-qrcode"></i>
+                                                        View Verification QR
+                                                    </button>
+                                                ) : (
+                                                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                        <i className="fa-solid fa-clock"></i> Awaiting Mill Decision
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: MY QR CODES (CROP VERIFICATION QR) */}
+                    {/* ======================================================== */}
+                    {activeTab === 'qrcodes' && (
+                        <div>
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Crop Verification QR Codes 🛡️</h2>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                    Authorized digital manifests for gate scanning, load authenticity, and delivery verification
+                                </p>
+                            </div>
+
+                            {acceptedEnquiries.length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+                                    <i className="fa-solid fa-qrcode fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                    <h3>No Active QR Codes</h3>
+                                    <p style={{ color: 'var(--text-muted)', maxWidth: '450px', margin: '0.5rem auto 1.5rem' }}>
+                                        Once a mill accepts your enquiry, your secure QR code is automatically generated and permanently saved here.
+                                    </p>
+                                    <button className="primary-btn" onClick={() => setActiveTab('enquiries')}>
+                                        Check Enquiries Status
+                                    </button>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                                    {acceptedEnquiries.map(enq => (
+                                        <div key={enq.id} className="bento-card" style={{ textAlign: 'center', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '1.75rem 1.5rem' }}>
+                                            <div style={{ display: 'inline-block', padding: '0.3rem 0.8rem', borderRadius: '1rem', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.75rem' }}>
+                                                {enq.load_status === 'LOAD_RECEIVED' ? '✓ LOAD RECEIVED AT MILL' : 'READY FOR GATE SCAN'}
+                                            </div>
+
+                                            <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.2rem' }}>{enq.crop_name}</h3>
+                                            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
+                                                {enq.quantity || (enq.acres * 2)} Tons to {enq.mill_name}
+                                            </p>
+
+                                            <div style={{ background: '#fff', padding: '0.75rem', borderRadius: '1rem', display: 'inline-block', marginBottom: '1rem', boxShadow: '0 10px 25px rgba(0,0,0,0.3)' }}>
+                                                <div style={{ width: '160px', height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#022c22', fontWeight: 700 }}>
+                                                    <i className="fa-solid fa-qrcode fa-5x"></i>
+                                                </div>
+                                            </div>
+
+                                            <div style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)', fontSize: '1.05rem', marginBottom: '1rem' }}>
+                                                {enq.enquiry_code}
+                                            </div>
+
+                                            <button 
+                                                className="primary-btn"
+                                                onClick={() => setSelectedEnquiryForQr(enq)}
+                                                style={{ width: '100%', justifyContent: 'center', padding: '0.75rem' }}
+                                            >
+                                                <i className="fa-solid fa-expand"></i>
+                                                Open Full QR & Share
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: LOAD STATUS LIFECYCLE */}
+                    {/* ======================================================== */}
+                    {activeTab === 'loadstatus' && (
+                        <div>
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Load Status & Traceability 📈</h2>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                    Full end-to-end audit lifecycle from initial farmer enquiry to gate verification and mill receipt
+                                </p>
+                            </div>
+
+                            {enquiries.length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
+                                    <p style={{ color: 'var(--text-muted)' }}>No loads initiated yet. Send an enquiry to a mill to start.</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                    {enquiries.map(enq => {
+                                        // Lifecycle stages:
+                                        // 1. PENDING (Enquiry Sent)
+                                        // 2. ACCEPTED (Mill Accepted)
+                                        // 3. QR_GENERATED (QR Generated)
+                                        // 4. QR_SCANNED (QR Scanned & Verified)
+                                        // 5. LOAD_RECEIVED (Load Received at Mill)
+                                        const isPending = enq.status === 'PENDING';
+                                        const isAccepted = enq.status === 'ACCEPTED' || enq.status === 'LOAD_RECEIVED';
+                                        const isQrReady = isAccepted;
+                                        const isReceived = enq.status === 'LOAD_RECEIVED' || enq.load_status === 'LOAD_RECEIVED';
+
+                                        const stages = [
+                                            { label: 'Enquiry Sent', done: true, time: enq.created_at },
+                                            { label: 'Mill Accepted', done: isAccepted, time: enq.accepted_at },
+                                            { label: 'QR Generated', done: isQrReady, time: enq.accepted_at },
+                                            { label: 'QR Scanned', done: isReceived, time: enq.received_at },
+                                            { label: 'Load Received', done: isReceived, time: enq.received_at }
+                                        ];
+
+                                        return (
+                                            <div key={enq.id} className="bento-card" style={{ border: `1px solid ${isReceived ? 'var(--primary)' : 'rgba(255,255,255,0.1)'}` }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                    <div>
+                                                        <span style={{ fontFamily: 'monospace', color: 'var(--accent-gold)', fontWeight: 800, fontSize: '1.1rem' }}>
+                                                            {enq.enquiry_code}
+                                                        </span>
+                                                        <h3 style={{ margin: '0.2rem 0 0 0', fontSize: '1.1rem' }}>
+                                                            {enq.crop_name} • {enq.quantity || (enq.acres * 2)} Tons
+                                                        </h3>
+                                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                            Destination: <strong>{enq.mill_name}</strong>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        {isReceived ? (
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', borderRadius: '2rem', background: 'rgba(16, 185, 129, 0.2)', color: 'var(--primary)', fontWeight: 800, fontSize: '0.85rem' }}>
+                                                                <i className="fa-solid fa-circle-check"></i>
+                                                                LOAD RECEIVED AT MILL
+                                                            </div>
+                                                        ) : isAccepted ? (
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', borderRadius: '2rem', background: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-gold)', fontWeight: 700, fontSize: '0.85rem' }}>
+                                                                <i className="fa-solid fa-qrcode"></i>
+                                                                QR READY FOR GATE SCAN
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', borderRadius: '2rem', background: 'rgba(255, 255, 255, 0.08)', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem' }}>
+                                                                <i className="fa-solid fa-hourglass-half"></i>
+                                                                AWAITING MILL ACCEPTANCE
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Stepper Progress View */}
+                                                <div style={{ padding: '1rem 0', overflowX: 'auto' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', minWidth: '550px' }}>
+                                                        {stages.map((stage, idx) => (
+                                                            <React.Fragment key={stage.label}>
+                                                                <div style={{ textAlign: 'center', flex: 1 }}>
+                                                                    <div style={{
+                                                                        width: '34px',
+                                                                        height: '34px',
+                                                                        borderRadius: '50%',
+                                                                        margin: '0 auto 0.4rem',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        background: stage.done ? 'var(--primary)' : 'rgba(255, 255, 255, 0.1)',
+                                                                        color: stage.done ? '#000' : 'var(--text-muted)',
+                                                                        fontWeight: 800,
+                                                                        boxShadow: stage.done ? '0 0 15px var(--primary-glow)' : 'none'
+                                                                    }}>
+                                                                        {stage.done ? <i className="fa-solid fa-check"></i> : idx + 1}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.75rem', fontWeight: stage.done ? 700 : 400, color: stage.done ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                                                                        {stage.label}
+                                                                    </div>
+                                                                    {stage.time && (
+                                                                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                                                                            {new Date(stage.time).toLocaleDateString('en-IN')}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                {idx < stages.length - 1 && (
+                                                                    <div style={{ flex: 1, height: '3px', background: stages[idx + 1].done ? 'var(--primary)' : 'rgba(255, 255, 255, 0.1)', margin: '0 -10px 1.4rem' }}></div>
+                                                                )}
+                                                            </React.Fragment>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Action Bar */}
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.75rem' }}>
+                                                    {isAccepted && (
+                                                        <button className="primary-btn" onClick={() => setSelectedEnquiryForQr(enq)} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
+                                                            <i className="fa-solid fa-qrcode"></i> View QR
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: TRANSPORT */}
+                    {/* ======================================================== */}
+                    {activeTab === 'transport' && (
+                        <div>
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Transport & Haulage Requests 🚛</h2>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                    Smart truck capacity matching, incoming transport quotes, and live vehicle tracking
+                                </p>
+                            </div>
+
+                            {transportRequests.length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
+                                    <i className="fa-solid fa-truck-moving fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                    <h3>No Transport Requests</h3>
+                                    <p style={{ color: 'var(--text-muted)' }}>When sending an enquiry, select "Transport Required = YES" to automatically request haulage.</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                    {transportRequests.map(tr => {
+                                        const quotes = kisanService.getQuotesForRequest(tr.transport_code);
+
+                                        return (
+                                            <div key={tr.id} className="bento-card" style={{ border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                                    <div>
+                                                        <span style={{ fontFamily: 'monospace', color: 'var(--accent-gold)', fontWeight: 800 }}>{tr.transport_code}</span>
+                                                        <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Enquiry: {tr.enquiry_code}</span>
+                                                    </div>
+                                                    <span className="status-badge" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8' }}>{tr.status}</span>
+                                                </div>
+
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+                                                    <div>Cargo: <strong>{tr.crop_name} ({tr.quantity} Tons)</strong></div>
+                                                    <div>Required Truck: <strong>{tr.required_capacity} Ton ({tr.vehicle_type || 'Truck'})</strong></div>
+                                                    <div>Delivery: <strong>{tr.mill_name}</strong></div>
+                                                    <div>Pickup Date: <strong>{tr.pickup_date || 'Flexible'}</strong></div>
+                                                </div>
+
+                                                {/* Quotes Section */}
+                                                <div>
+                                                    <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem' }}>
+                                                        Quotes from Suitable Transport Providers ({quotes.length})
+                                                    </h4>
+                                                    {quotes.length === 0 ? (
+                                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Searching for nearby trucks matching your {tr.required_capacity} Ton capacity...</p>
+                                                    ) : (
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
+                                                            {quotes.map(q => (
+                                                                <div key={q.id} style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '1rem', borderRadius: '0.75rem', border: `1px solid ${q.status === 'ACCEPTED' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.08)'}` }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                                                                        <strong>{q.provider_name}</strong>
+                                                                        <strong style={{ color: 'var(--primary)', fontSize: '1.1rem' }}>₹{q.price?.toLocaleString()}</strong>
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                                                                        Vehicle: {q.vehicle_number} ({q.vehicle_capacity}T) • Est: {q.estimated_time}
+                                                                    </div>
+
+                                                                    {q.status === 'ACCEPTED' ? (
+                                                                        <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.85rem' }}>
+                                                                            ✓ Assigned Provider
+                                                                        </span>
+                                                                    ) : tr.status === 'ASSIGNED' ? (
+                                                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Closed</span>
+                                                                    ) : (
+                                                                        <button 
+                                                                            className="primary-btn" 
+                                                                            onClick={() => handleAcceptTransportQuote(q.id)}
+                                                                            style={{ width: '100%', justifyContent: 'center', padding: '0.5rem', fontSize: '0.8rem' }}
+                                                                        >
+                                                                            Accept Quote
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: MARKET PRICES */}
+                    {/* ======================================================== */}
+                    {activeTab === 'market' && (
+                        <div className="dashboard view-section" style={{ display: 'block' }}>
+                            <div className="welcome-section">
+                                <div>
+                                    <h1>Live Market Prices 📈</h1>
+                                    <p>Stay updated with the latest crop prices in major markets.</p>
+                                </div>
+                            </div>
+                            <div className="bento-card">
                                 <div className="table-responsive">
                                     <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
                                         <thead>
@@ -698,369 +1089,108 @@ export default function FarmerPortal({ user, onLogout }) {
                                                 <th style={{ padding: '1rem' }}>Market</th>
                                                 <th style={{ padding: '1rem' }}>Price (per Quintal)</th>
                                                 <th style={{ padding: '1rem' }}>Trend</th>
-                                                <th style={{ padding: '1rem' }}>Last Updated</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <td style={{ padding: '1rem' }}>Paddy (Rice)</td>
+                                                <td style={{ padding: '1rem', fontWeight: 600 }}>Paddy (Rice)</td>
                                                 <td style={{ padding: '1rem' }}>Warangal</td>
-                                                <td style={{ padding: '1rem' }}>₹2,250</td>
-                                                <td style={{ padding: '1rem' }}><span className="trend up"><i className="fa-solid fa-arrow-trend-up"></i> +2.5%</span></td>
-                                                <td style={{ padding: '1rem' }}>10 mins ago</td>
+                                                <td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 700 }}>₹2,250</td>
+                                                <td style={{ padding: '1rem' }}><span className="trend up">+2.5%</span></td>
                                             </tr>
                                             <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <td style={{ padding: '1rem' }}>Maize</td>
+                                                <td style={{ padding: '1rem', fontWeight: 600 }}>Maize</td>
                                                 <td style={{ padding: '1rem' }}>Nizamabad</td>
-                                                <td style={{ padding: '1rem' }}>₹1,960</td>
-                                                <td style={{ padding: '1rem' }}><span className="trend down"><i className="fa-solid fa-arrow-trend-down"></i> -1.2%</span></td>
-                                                <td style={{ padding: '1rem' }}>25 mins ago</td>
+                                                <td style={{ padding: '1rem', color: 'var(--danger)', fontWeight: 700 }}>₹1,960</td>
+                                                <td style={{ padding: '1rem' }}><span className="trend down">-1.2%</span></td>
                                             </tr>
                                             <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <td style={{ padding: '1rem' }}>Cotton</td>
+                                                <td style={{ padding: '1rem', fontWeight: 600 }}>Cotton</td>
                                                 <td style={{ padding: '1rem' }}>Adoni</td>
-                                                <td style={{ padding: '1rem' }}>₹7,100</td>
-                                                <td style={{ padding: '1rem' }}><span className="trend up"><i className="fa-solid fa-arrow-trend-up"></i> +0.8%</span></td>
-                                                <td style={{ padding: '1rem' }}>1 hour ago</td>
+                                                <td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 700 }}>₹7,100</td>
+                                                <td style={{ padding: '1rem' }}><span className="trend up">+0.8%</span></td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {activeTab === 'mills' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Mills Near Me 🏭</h1>
-                                <p>Select your crop to find verified mills for direct selling.</p>
-                            </div>
-                        </div>
-
-                        <div className="bento-grid">
-                            <div className="bento-card span-12">
-                                <div className="card-header">
-                                    <h3>Select Your Crop to Search</h3>
+                    {/* ======================================================== */}
+                    {/* TAB: PROFILE */}
+                    {/* ======================================================== */}
+                    {activeTab === 'profile' && (
+                        <div className="bento-card" style={{ maxWidth: '600px', margin: '0 auto' }}>
+                            <h3 style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                                Farmer Profile Settings
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Full Name</label>
+                                    <input 
+                                        type="text" 
+                                        value={profileName} 
+                                        onChange={e => setProfileName(e.target.value)}
+                                        style={{ width: '100%', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
+                                    />
                                 </div>
-                                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-                                    {crops.map(c => (
-                                        <button
-                                            key={c.id}
-                                            className={`primary-btn ${selectedCropForSearch?.id === c.id ? '' : 'text-btn'}`}
-                                            style={{
-                                                background: selectedCropForSearch?.id === c.id ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
-                                                color: selectedCropForSearch?.id === c.id ? '#000' : 'var(--text-main)',
-                                                textTransform: 'none',
-                                                border: selectedCropForSearch?.id === c.id ? 'none' : '1px solid var(--border-color)'
-                                            }}
-                                            onClick={() => handleSearchMills(c)}
-                                        >
-                                            <i className="fa-solid fa-wheat-awn"></i> {c.cropName} ({c.locationName})
-                                        </button>
-                                    ))}
-                                    {crops.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No crops added yet. Please add a crop first.</p>}
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Alternate Phone</label>
+                                    <input 
+                                        type="tel" 
+                                        value={profileAltPhone} 
+                                        onChange={e => setProfileAltPhone(e.target.value)}
+                                        style={{ width: '100%', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
+                                    />
                                 </div>
-                            </div>
-
-                            {selectedCropForSearch && (
-                                <div className="bento-card span-12" style={{ animation: 'fadeIn 0.5s ease-out' }}>
-                                    <div className="card-header">
-                                        <h3>Verified Mills buying {selectedCropForSearch.cropName}</h3>
-                                        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Ordered by distance from your plot</span>
-                                    </div>
-                                    <div className="mills-list" style={{ marginTop: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
-                                        {isSearchingMills ? (
-                                            <div style={{ padding: '2rem', textAlign: 'center', gridColumn: '1/-1' }}>Searching for nearby mills...</div>
-                                        ) : nearbyMills.length === 0 ? (
-                                            <div style={{ padding: '2rem', textAlign: 'center', gridColumn: '1/-1', color: 'var(--text-dim)' }}>
-                                                <i className="fa-solid fa-circle-info" style={{ fontSize: '2.5rem', marginBottom: '1rem', opacity: 0.3 }}></i>
-                                                <p>No verified mills found currently buying {selectedCropForSearch.cropName}.</p>
-                                            </div>
-                                        ) : nearbyMills.map(mill => (
-                                            <div key={mill.id} className="stat-card" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '2rem', gap: '1rem', borderRadius: '2.5rem' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'flex-start' }}>
-                                                    <div className="stat-icon" style={{ background: 'var(--bg-deep)', color: 'var(--primary)', width: '60px', height: '60px' }}><i className="fa-solid fa-industry"></i></div>
-                                                    <span style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', background: 'rgba(0,255,138,0.15)', color: 'var(--primary)', borderRadius: '2rem', fontWeight: 800, letterSpacing: '1px' }}>VERIFIED</span>
-                                                </div>
-                                                <div className="stat-details" style={{ width: '100%' }}>
-                                                    <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '0.4rem' }}>{mill.millName}</h3>
-                                                    <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
-                                                        <i className="fa-solid fa-location-dot" style={{ color: 'var(--primary)' }}></i> {mill.locationName}
-                                                        <span style={{ marginLeft: 'auto', fontWeight: 700, color: 'var(--primary-light)' }}>{mill.distance.toFixed(1)} km</span>
-                                                    </div>
-
-                                                    <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.25rem', borderRadius: '1.5rem', marginBottom: '1.5rem' }}>
-                                                        {mill.cropPrices?.[selectedCropForSearch.cropName] && (
-                                                            <div style={{ fontSize: '1.1rem', color: 'var(--text-main)', marginBottom: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed rgba(255,255,255,0.1)', paddingBottom: '0.6rem' }}>
-                                                                <span style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>Offering Price:</span>
-                                                                <span style={{ color: 'var(--success)', fontWeight: 800 }}>₹{mill.cropPrices[selectedCropForSearch.cropName]} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-muted)' }}>/ Quintal</span></span>
-                                                            </div>
-                                                        )}
-                                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
-                                                            Capacity: <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{mill.capacity} TPD</span>
-                                                        </div>
-                                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', display: 'flex', justifyContent: 'space-between' }}>
-                                                            Cold Storage: <span style={{ color: mill.hasColdStorage ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{mill.hasColdStorage ? 'YES' : 'NO'}</span>
-                                                        </div>
-                                                    </div>
-
-                                                    <button
-                                                        className="primary-btn"
-                                                        style={{ width: '100%', padding: '0.8rem' }}
-                                                        onClick={() => setSelectedMillForEnquiry(mill)}
-                                                    >
-                                                        <i className="fa-solid fa-message"></i> Send Inquiry
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'logistics' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Logistics & Transport 🚛</h1>
-                                <p>Book and track transportation for your harvest.</p>
-                            </div>
-                            <button className="primary-btn">
-                                <i className="fa-solid fa-truck"></i> Book a Truck
-                            </button>
-                        </div>
-                        <div className="stats-grid">
-                            <div className="stat-card">
-                                <div className="stat-icon orders"><i className="fa-solid fa-clock-rotate-left"></i></div>
-                                <div className="stat-details">
-                                    <h3>Pending Deliveries</h3>
-                                    <h2>{orders.filter(o => o.withTransport).length}</h2>
-                                    <span className="trend neutral">To be delivered</span>
-                                </div>
-                            </div>
-                            <div className="stat-card">
-                                <div className="stat-icon revenue"><i className="fa-solid fa-route"></i></div>
-                                <div className="stat-details">
-                                    <h3>Self-Managed Shipments</h3>
-                                    <h2>{orders.filter(o => !o.withTransport).length}</h2>
-                                    <span className="trend neutral">Buyer arranged prep</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bento-grid">
-                            {orders.length === 0 ? (
-                                <div className="bento-card span-12" style={{ textAlign: 'center', padding: '4rem 0' }}>
-                                    <i className="fa-solid fa-truck-moving" style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '1.5rem', opacity: 0.5 }}></i>
-                                    <h3>No Logistics Records</h3>
-                                    <p style={{ color: 'var(--text-muted)' }}>You haven't booked any transport or received accepted orders yet.</p>
-                                </div>
-                            ) : (
-                                orders.map(order => (
-                                    <div key={order.id} className="bento-card span-12" style={{ marginBottom: '1.5rem' }}>
-                                        <div className="card-header" style={{ marginBottom: '1rem' }}>
-                                            <div>
-                                                <h3>Delivery to {order.millName}</h3>
-                                                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{order.cropName} • {order.acres} Acres • {order.distance?.toFixed(1) || 0} km</p>
-                                            </div>
-                                            <div>
-                                                {order.withTransport ? (
-                                                    <span style={{ background: 'rgba(0, 255, 136, 0.1)', color: 'var(--primary)', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 600 }}>
-                                                        <i className="fa-solid fa-truck"></i> Transport Required
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ background: 'rgba(255, 179, 0, 0.1)', color: '#ffb300', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 600 }}>
-                                                        <i className="fa-solid fa-warehouse"></i> Buyer Arranged Transport
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {order.farmerLat && order.millLat && (
-                                            <div style={{ marginTop: '1.5rem' }}>
-                                                {expandedMapOrderId === order.id ? (
-                                                    <div style={{ position: 'relative' }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                                            <h4 style={{ margin: 0 }}><i className="fa-solid fa-map-location-dot" style={{ color: 'var(--primary)', marginRight: '0.5rem' }}></i> Map & Directions</h4>
-                                                            <button
-                                                                className="text-btn"
-                                                                style={{ color: 'var(--danger)', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
-                                                                onClick={() => setExpandedMapOrderId(null)}
-                                                            >
-                                                                <i className="fa-solid fa-xmark"></i> Close Map
-                                                            </button>
-                                                        </div>
-                                                        <div style={{ height: '350px', width: '100%', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                                                            <MapContainer
-                                                                bounds={[[order.farmerLat, order.farmerLng], [order.millLat, order.millLng]]}
-                                                                style={{ height: '100%', width: '100%' }}
-                                                                scrollWheelZoom={false}
-                                                            >
-                                                                <TileLayer
-                                                                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                                                                />
-                                                                <Marker position={[order.farmerLat, order.farmerLng]}>
-                                                                    <Popup><strong>{order.farmerLocationName}</strong><br />Your Crop Location</Popup>
-                                                                </Marker>
-                                                                <Marker position={[order.millLat, order.millLng]}>
-                                                                    <Popup><strong>{order.millLocationName}</strong><br />{order.millName} Location</Popup>
-                                                                </Marker>
-                                                                <Polyline
-                                                                    positions={[[order.farmerLat, order.farmerLng], [order.millLat, order.millLng]]}
-                                                                    color="var(--primary)"
-                                                                    dashArray="5, 10"
-                                                                    weight={3}
-                                                                />
-                                                            </MapContainer>
-                                                        </div>
-                                                        <a
-                                                            className="primary-btn"
-                                                            style={{ display: 'inline-flex', marginTop: '1rem', width: '100%', justifyContent: 'center', padding: '1rem', textDecoration: 'none' }}
-                                                            href={`https://www.google.com/maps/dir/?api=1&origin=${order.farmerLat},${order.farmerLng}&destination=${order.millLat},${order.millLng}`}
-                                                            target="_blank"
-                                                            rel="noreferrer"
-                                                        >
-                                                            <i className="fa-solid fa-location-arrow"></i> Get Turn-by-Turn GPS Directions
-                                                        </a>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        className="primary-btn"
-                                                        style={{ width: '100%', padding: '1rem', background: 'transparent', color: 'var(--primary)', border: '1px solid var(--primary)' }}
-                                                        onClick={() => setExpandedMapOrderId(order.id)}
-                                                    >
-                                                        <i className="fa-solid fa-map-location-dot"></i> View Map & Directions
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'finances' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Financial Overview 💰</h1>
-                                <p>Track your earnings, expenses, and loan applications.</p>
-                            </div>
-                        </div>
-                        <div className="stats-grid">
-                            <div className="stat-card">
-                                <div className="stat-icon revenue"><i className="fa-solid fa-money-bill-trend-up"></i></div>
-                                <div className="stat-details">
-                                    <h3>Total Earnings</h3>
-                                    <h2>₹0.00</h2>
-                                    <span className="trend neutral">Update bank details</span>
-                                </div>
-                            </div>
-                            <div className="stat-card">
-                                <div className="stat-icon alerts"><i className="fa-solid fa-hand-holding-dollar"></i></div>
-                                <div className="stat-details">
-                                    <h3>Pending Payments</h3>
-                                    <h2>₹0.00</h2>
-                                    <span className="trend neutral">No pending claims</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bento-grid">
-                            <div className="bento-card span-12" style={{ padding: '2rem' }}>
-                                <div className="card-header">
-                                    <h3>Payment History</h3>
-                                </div>
-                                <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
-                                    <i className="fa-solid fa-file-invoice" style={{ fontSize: '2.5rem', marginBottom: '1rem', opacity: 0.3 }}></i>
-                                    <p>Your financial transaction history will appear here.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'profile' && (
-                    <div className="dashboard view-section" style={{ display: 'block' }}>
-                        <div className="welcome-section">
-                            <div>
-                                <h1>Settings & Profile ⚙️</h1>
-                                <p>Update your personal information and contact details.</p>
-                            </div>
-                        </div>
-                        <div className="bento-grid">
-                            <div className="bento-card span-12" style={{ maxWidth: '600px', margin: '1rem auto' }}>
-                                <div className="card-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-                                    <h3>Personal Information</h3>
-                                </div>
-
-                                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Full Name</label>
-                                <div className="input-group" style={{ marginBottom: '1.25rem' }}>
-                                    <i className="fa-solid fa-user"></i>
-                                    <input type="text" placeholder="Enter your full name" value={profileName} onChange={e => setProfileName(e.target.value)} />
-                                </div>
-
-                                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Alternate Phone Number</label>
-                                <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-                                    <i className="fa-solid fa-phone"></i>
-                                    <input type="tel" placeholder="10-digit emergency/alternate number" maxLength="10" value={profileAltPhone} onChange={e => setProfileAltPhone(e.target.value)} />
-                                </div>
-
-                                <button
-                                    className="primary-btn"
-                                    style={{ width: '100%', justifyContent: 'center', padding: '1rem' }}
-                                    onClick={handleUpdateProfile}
-                                    disabled={isSavingProfile}
-                                >
+                                <button className="primary-btn" onClick={handleUpdateProfile} disabled={isSavingProfile} style={{ justifyContent: 'center' }}>
                                     {isSavingProfile ? 'Saving...' : 'Save Profile Changes'}
                                 </button>
-                            </div>
 
-                            <div className="bento-card span-12" style={{ maxWidth: '600px', margin: '0 auto 1rem auto' }}>
-                                <div className="card-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-                                    <h3>Login & Security</h3>
+                                <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
+                                    <h4 style={{ margin: '0 0 1rem 0' }}>Security PIN</h4>
+                                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                        <input 
+                                            type="password"
+                                            value={newPin}
+                                            onChange={e => setNewPin(e.target.value)}
+                                            placeholder="Enter new 4-6 digit PIN"
+                                            maxLength="6"
+                                            style={{ flex: 1, padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
+                                        />
+                                        <button className="primary-btn" onClick={handleUpdateSecurity} disabled={isUpdatingSecurity}>
+                                            Update PIN
+                                        </button>
+                                    </div>
                                 </div>
-                                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Update your primary phone number and login PIN here. If you change your phone number, your account data will be safely migrated and you will need to log in again.</p>
-
-                                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Primary Phone Number (Login ID)</label>
-                                <div className="input-group" style={{ marginBottom: '1.25rem' }}>
-                                    <i className="fa-solid fa-mobile-screen"></i>
-                                    <input type="tel" placeholder="10-digit primary login number" maxLength="10" value={newPhone} onChange={e => setNewPhone(e.target.value)} />
-                                </div>
-
-                                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>6-Digit Account PIN</label>
-                                <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-                                    <i className="fa-solid fa-lock"></i>
-                                    <input type="password" placeholder="6-digit PIN" maxLength="6" value={newPin} onChange={e => setNewPin(e.target.value)} />
-                                </div>
-
-                                <button
-                                    className="primary-btn"
-                                    style={{ width: '100%', justifyContent: 'center', padding: '1rem', background: 'transparent', color: 'var(--primary)', border: '1px solid var(--primary)' }}
-                                    onClick={handleUpdateSecurity}
-                                    disabled={isUpdatingSecurity}
-                                >
-                                    {isUpdatingSecurity ? 'Updating Security...' : 'Update Security Settings'}
-                                </button>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
+
+                </div>
             </main>
 
+            {/* MODALS */}
             {isAddCropOpen && <AddCropModal onClose={() => setIsAddCropOpen(false)} onSaveCrop={handleSaveCrop} />}
+            
             {selectedMillForEnquiry && (
                 <SendEnquiryModal
                     onClose={() => setSelectedMillForEnquiry(null)}
                     mill={selectedMillForEnquiry}
                     crop={selectedCropForSearch}
                     user={user}
+                    onEnquiryCreated={(newEnquiry) => {
+                        fetchEnquiriesData();
+                        setActiveTab('enquiries');
+                    }}
+                />
+            )}
+
+            {selectedEnquiryForQr && (
+                <QrCodeModal
+                    enquiry={selectedEnquiryForQr}
+                    onClose={() => setSelectedEnquiryForQr(null)}
                 />
             )}
         </div>

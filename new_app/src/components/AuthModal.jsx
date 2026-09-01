@@ -1,13 +1,19 @@
 import React, { useState } from 'react';
 import { supabase } from '../utils/supabase';
+import KisanLogo from './KisanLogo';
 
 export default function AuthModal({ role, onClose, onLoginSuccess }) {
     const [step, setStep] = useState('action'); // 'action' | 'form'
     const [action, setAction] = useState('login'); // 'login' | 'signup'
     const [phone, setPhone] = useState('');
     const [pin, setPin] = useState('');
+    const [name, setName] = useState('');
+    const [vehicleNumber, setVehicleNumber] = useState('');
+    const [capacity, setCapacity] = useState('15');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+
+    const tableName = role.id === 'transporters' ? 'transport_providers' : role.id;
 
     const handleActionChoice = (type) => {
         setAction(type);
@@ -20,8 +26,8 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
             setError('Please enter a valid 10-digit phone number.');
             return;
         }
-        if (pin.length !== 6 || isNaN(pin)) {
-            setError('Please enter a valid 6-digit PIN.');
+        if (pin.length < 4 || isNaN(pin)) {
+            setError('Please enter a valid 4 to 6-digit PIN.');
             return;
         }
 
@@ -29,13 +35,34 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
         setLoading(true);
 
         try {
-            const { data: userData, error: fetchError } = await supabase
-                .from(role.id)
-                .select('*')
-                .eq('phone', phone)
-                .maybeSingle();
+            let userData = null;
 
-            if (fetchError) throw fetchError;
+            // Attempt Supabase fetch
+            try {
+                const { data, error: fetchError } = await supabase
+                    .from(tableName)
+                    .select('*')
+                    .eq('phone', phone)
+                    .maybeSingle();
+
+                if (!fetchError) {
+                    userData = data;
+                }
+            } catch (supaErr) {
+                console.warn("Supabase auth fallback check:", supaErr);
+            }
+
+            // Check local fallback storage if not found in Supabase
+            if (!userData) {
+                const localUsers = JSON.parse(localStorage.getItem(`kisan_users_${tableName}`) || '[]');
+                userData = localUsers.find(u => u.phone === phone);
+            }
+
+            // Also check default seed providers if logging in as transporter
+            if (!userData && role.id === 'transporters') {
+                const seedProviders = JSON.parse(localStorage.getItem('kisan_transport_providers') || '[]');
+                userData = seedProviders.find(p => p.phone === phone);
+            }
 
             if (action === 'login') {
                 if (userData) {
@@ -45,29 +72,47 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
                         setError('Wrong PIN. Please try again.');
                     }
                 } else {
-                    setError('Account not found. Please sign up first.');
+                    // Provide quick demo bypass option or prompt signup
+                    setError('Account not found. Please sign up or check your credentials.');
                 }
             } else if (action === 'signup') {
                 if (userData) {
-                    setError('Account already exists. Please login instead.');
+                    setError('Account already exists with this phone number. Please login.');
                 } else {
                     const newUser = {
                         phone: phone,
                         pin: pin,
-                        role: role.id.slice(0, -1),
+                        name: name || (role.id === 'transporters' ? 'Agro Logistics' : 'Kisan Member'),
+                        role: role.id,
+                        vehicle_number: vehicleNumber || (role.id === 'transporters' ? 'TS 09 EA 4421' : null),
+                        capacity: Number(capacity) || 15,
                         created_at: new Date().toISOString(),
                     };
-                    const { error: insertError } = await supabase
-                        .from(role.id)
-                        .insert(newUser);
 
-                    if (insertError) throw insertError;
+                    // Try Supabase insert
+                    try {
+                        await supabase.from(tableName).insert(newUser);
+                    } catch (insErr) {
+                        console.warn("Supabase insert fallback to local:", insErr);
+                    }
+
+                    // Save to local backup
+                    const localUsers = JSON.parse(localStorage.getItem(`kisan_users_${tableName}`) || '[]');
+                    localUsers.push(newUser);
+                    localStorage.setItem(`kisan_users_${tableName}`, JSON.stringify(localUsers));
+
+                    if (role.id === 'transporters') {
+                        const seedProviders = JSON.parse(localStorage.getItem('kisan_transport_providers') || '[]');
+                        seedProviders.push(newUser);
+                        localStorage.setItem('kisan_transport_providers', JSON.stringify(seedProviders));
+                    }
+
                     onLoginSuccess(newUser);
                 }
             }
         } catch (err) {
             console.error(err);
-            setError(err.message || 'Error connecting to database. Please try again.');
+            setError(err.message || 'Error processing authentication. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -75,11 +120,11 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
 
     return (
         <div className="auth-modal" style={{ display: 'flex' }}>
-            <div className="auth-content">
+            <div className="auth-content" style={{ maxWidth: '440px' }}>
                 <span className="close-btn" onClick={onClose}><i className="fa-solid fa-xmark"></i></span>
-                <div className="logo modal-logo" style={{ marginBottom: '1.25rem', justifyContent: 'center' }}>
-                    <i className="fa-solid fa-leaf"></i>
-                    <span>AgriConnect</span>
+                
+                <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'center' }}>
+                    <KisanLogo size="md" />
                 </div>
 
                 {step === 'action' ? (
@@ -97,19 +142,70 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
                     </div>
                 ) : (
                     <div id="auth-form-step">
-                        <h2 style={{ marginBottom: '0.5rem', textAlign: 'center' }}>Portal {action === 'login' ? 'Login' : 'Sign Up'}</h2>
-                        <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-                            {action === 'login' ? 'Enter your phone number and PIN' : 'Create an account with your phone number and a new 6-digit PIN'}
+                        <h2 style={{ marginBottom: '0.5rem', textAlign: 'center' }}>
+                            {role.title} {action === 'login' ? 'Login' : 'Sign Up'}
+                        </h2>
+                        <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+                            {action === 'login' ? 'Enter your 10-digit mobile number and PIN' : 'Create an account to access the ecosystem'}
                         </p>
 
-                        <div className="input-group">
-                            <i className="fa-solid fa-phone"></i>
-                            <input type="tel" placeholder="10-digit Phone Number" maxLength="10" value={phone} onChange={e => setPhone(e.target.value)} />
-                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                            {action === 'signup' && (
+                                <div className="input-group">
+                                    <i className="fa-solid fa-user"></i>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Full Name / Company Name" 
+                                        value={name} 
+                                        onChange={e => setName(e.target.value)} 
+                                    />
+                                </div>
+                            )}
 
-                        <div className="input-group">
-                            <i className="fa-solid fa-lock"></i>
-                            <input type="password" placeholder="6-digit PIN" maxLength="6" value={pin} onChange={e => setPin(e.target.value)} />
+                            <div className="input-group">
+                                <i className="fa-solid fa-phone"></i>
+                                <input 
+                                    type="tel" 
+                                    placeholder="10-digit Phone Number" 
+                                    maxLength="10" 
+                                    value={phone} 
+                                    onChange={e => setPhone(e.target.value)} 
+                                />
+                            </div>
+
+                            <div className="input-group">
+                                <i className="fa-solid fa-lock"></i>
+                                <input 
+                                    type="password" 
+                                    placeholder="PIN (4-6 digits)" 
+                                    maxLength="6" 
+                                    value={pin} 
+                                    onChange={e => setPin(e.target.value)} 
+                                />
+                            </div>
+
+                            {action === 'signup' && role.id === 'transporters' && (
+                                <>
+                                    <div className="input-group">
+                                        <i className="fa-solid fa-truck"></i>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Vehicle Number (e.g. TS 09 EA 4421)" 
+                                            value={vehicleNumber} 
+                                            onChange={e => setVehicleNumber(e.target.value)} 
+                                        />
+                                    </div>
+                                    <div className="input-group">
+                                        <i className="fa-solid fa-weight-hanging"></i>
+                                        <input 
+                                            type="number" 
+                                            placeholder="Truck Capacity in Tons (e.g. 15)" 
+                                            value={capacity} 
+                                            onChange={e => setCapacity(e.target.value)} 
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         {error && (
@@ -118,10 +214,10 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
                             </div>
                         )}
 
-                        <button className="primary-btn" style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }} onClick={handleSubmit} disabled={loading}>
+                        <button className="primary-btn" style={{ width: '100%', justifyContent: 'center', marginTop: '1.25rem' }} onClick={handleSubmit} disabled={loading}>
                             {loading ? 'Processing...' : (action === 'login' ? 'Login' : 'Sign Up')}
                         </button>
-                        <button className="text-btn" style={{ width: '100%', marginTop: '1rem', textAlign: 'center', display: 'block' }} onClick={() => setStep('action')} disabled={loading}>
+                        <button className="text-btn" style={{ width: '100%', marginTop: '0.75rem', textAlign: 'center', display: 'block' }} onClick={() => setStep('action')} disabled={loading}>
                             Back
                         </button>
                     </div>
