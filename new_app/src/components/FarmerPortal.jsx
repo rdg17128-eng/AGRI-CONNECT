@@ -391,7 +391,10 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
     };
 
     // Filter accepted enquiries with QR codes available
-    const acceptedEnquiries = enquiries.filter(e => e.status === 'ACCEPTED' || e.status === 'LOAD_RECEIVED');
+    const acceptedEnquiries = enquiries.filter(e => {
+        const s = (e.status || '').toUpperCase();
+        return s === 'ACCEPTED' || s === 'LOAD_RECEIVED';
+    });
 
     const cropCountText = crops.length > 1 ? `${crops.length} Lots` : crops.length === 1 ? crops[0].cropName : '0 Lots';
     const cropLocationText = crops.length > 1 ? `${crops[crops.length - 1].cropName} & more` : crops.length === 1 ? crops[0].locationName : 'Add crops to track';
@@ -809,10 +812,15 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                                     {enq.enquiry_code}
                                                 </span>
                                                 <span className="status-badge" style={{
-                                                    background: enq.status === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : enq.status === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
-                                                    color: enq.status === 'ACCEPTED' ? 'var(--primary)' : enq.status === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24'
+                                                    background: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : (enq.status || '').toUpperCase() === 'REJECTED' ? 'rgba(239, 68, 68, 0.15)' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                                                    color: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'var(--primary)' : (enq.status || '').toUpperCase() === 'REJECTED' ? '#ef4444' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24',
+                                                    textTransform: 'uppercase',
+                                                    padding: '0.2rem 0.6rem',
+                                                    borderRadius: '0.4rem',
+                                                    fontWeight: 700,
+                                                    fontSize: '0.75rem'
                                                 }}>
-                                                    {enq.status}
+                                                    {(enq.status || 'PENDING').toUpperCase()}
                                                 </span>
                                             </div>
 
@@ -826,7 +834,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                             </div>
 
                                             <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
-                                                {enq.status === 'ACCEPTED' || enq.status === 'LOAD_RECEIVED' ? (
+                                                {(enq.status || '').toUpperCase() === 'ACCEPTED' || (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? (
                                                     <button 
                                                         className="primary-btn" 
                                                         onClick={() => setSelectedEnquiryForQr(enq)}
@@ -835,8 +843,12 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                                         <i className="fa-solid fa-qrcode"></i>
                                                         View Verification QR
                                                     </button>
+                                                ) : (enq.status || '').toUpperCase() === 'REJECTED' ? (
+                                                    <div style={{ textAlign: 'center', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600, padding: '0.35rem 0' }}>
+                                                        <i className="fa-solid fa-circle-xmark"></i> Enquiry Declined by Mill
+                                                    </div>
                                                 ) : (
-                                                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0.35rem 0' }}>
                                                         <i className="fa-solid fa-clock"></i> Awaiting Mill Decision
                                                     </div>
                                                 )}

@@ -204,10 +204,15 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
     };
 
     const handleAcceptEnquiry = async (enquiry) => {
-        if (!window.confirm(`Accept enquiry ${enquiry.enquiry_code} from ${enquiry.farmer_name}?`)) return;
+        const targetId = enquiry.id || enquiry.enquiry_code;
+        if (!window.confirm(`Accept enquiry ${enquiry.enquiry_code || targetId} from ${enquiry.farmer_name}?`)) return;
 
         try {
-            const accepted = await kisanService.acceptEnquiry(enquiry.enquiry_code || enquiry.id, {
+            // Optimistically update local state immediately so user sees the change with 0 delay!
+            setEnquiries(prev => prev.map(e => (e.id === targetId || e.enquiry_code === targetId) ? { ...e, status: 'ACCEPTED' } : e));
+            setEnquiryFilter('ACCEPTED');
+
+            const accepted = await kisanService.acceptEnquiry(targetId, {
                 name: profileName || user.phone,
                 phone: user.phone,
                 id: mills[0]?.id || user.phone,
@@ -216,23 +221,29 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
 
             if (accepted) {
                 await refreshAllData();
-                setEnquiryFilter('ACCEPTED');
             }
         } catch (error) {
             console.error("Error accepting enquiry:", error);
             alert("Failed to accept enquiry. Please try again.");
+            await refreshAllData();
         }
     };
 
     const handleRejectEnquiry = async (enquiry) => {
+        const targetId = enquiry.id || enquiry.enquiry_code;
         const reason = window.prompt("Please provide a reason for rejecting this enquiry (optional):", "Price negotiation / Capacity limit");
         if (reason === null) return;
 
         try {
-            await kisanService.rejectEnquiry(enquiry.enquiry_code || enquiry.id, reason);
-            refreshAllData();
+            // Optimistically update local state immediately
+            setEnquiries(prev => prev.map(e => (e.id === targetId || e.enquiry_code === targetId) ? { ...e, status: 'REJECTED', reject_reason: reason } : e));
+            setEnquiryFilter('REJECTED');
+
+            await kisanService.rejectEnquiry(targetId, reason);
+            await refreshAllData();
         } catch (error) {
             console.error("Error rejecting enquiry:", error);
+            await refreshAllData();
         }
     };
 
@@ -550,17 +561,51 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                     </p>
                                 </div>
 
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                    {['ALL', 'PENDING', 'ACCEPTED', 'LOAD_RECEIVED'].map(filter => (
-                                        <button 
-                                            key={filter} 
-                                            className={`action-btn ${enquiryFilter === filter ? 'active' : ''}`}
-                                            onClick={() => setEnquiryFilter(filter)}
-                                            style={{ fontSize: '0.8rem', padding: '0.5rem 0.9rem', background: enquiryFilter === filter ? 'var(--primary)' : 'rgba(255,255,255,0.05)', color: enquiryFilter === filter ? '#000' : 'inherit' }}
-                                        >
-                                            {filter.replace('_', ' ')}
-                                        </button>
-                                    ))}
+                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    {[
+                                        { key: 'ALL', label: 'ALL' },
+                                        { key: 'PENDING', label: 'PENDING' },
+                                        { key: 'ACCEPTED', label: 'ACCEPTED' },
+                                        { key: 'REJECTED', label: 'REJECTED' },
+                                        { key: 'LOAD_RECEIVED', label: 'LOAD RECEIVED' }
+                                    ].map(item => {
+                                        const count = item.key === 'ALL' 
+                                            ? enquiries.length 
+                                            : enquiries.filter(e => (e.status || '').toUpperCase() === item.key).length;
+                                        const isActive = enquiryFilter === item.key;
+                                        return (
+                                            <button 
+                                                key={item.key} 
+                                                className={`action-btn ${isActive ? 'active' : ''}`}
+                                                onClick={() => setEnquiryFilter(item.key)}
+                                                style={{ 
+                                                    fontSize: '0.8rem', 
+                                                    padding: '0.5rem 0.9rem', 
+                                                    background: isActive ? 'var(--primary)' : 'rgba(255,255,255,0.05)', 
+                                                    color: isActive ? '#000' : 'inherit',
+                                                    fontWeight: 700,
+                                                    borderRadius: '0.5rem',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.45rem',
+                                                    border: isActive ? 'none' : '1px solid var(--border-color)',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                <span>{item.label}</span>
+                                                <span style={{ 
+                                                    background: isActive ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.1)', 
+                                                    color: isActive ? '#000' : 'var(--text-muted)', 
+                                                    padding: '0.1rem 0.45rem', 
+                                                    borderRadius: '1rem', 
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 800
+                                                }}>
+                                                    {count}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -586,8 +631,8 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                                 </div>
 
                                                 <span className="status-badge" style={{
-                                                    background: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
-                                                    color: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'var(--primary)' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24',
+                                                    background: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : (enq.status || '').toUpperCase() === 'REJECTED' ? 'rgba(239, 68, 68, 0.15)' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                                                    color: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'var(--primary)' : (enq.status || '').toUpperCase() === 'REJECTED' ? '#ef4444' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24',
                                                     padding: '0.25rem 0.65rem',
                                                     fontSize: '0.75rem',
                                                     fontWeight: 700,
@@ -684,6 +729,18 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                                             <i className="fa-solid fa-qrcode"></i>
                                                             Scan QR on Arrival
                                                         </button>
+                                                    </div>
+                                                ) : (enq.status || '').toUpperCase() === 'REJECTED' ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600 }}>
+                                                            <i className="fa-solid fa-circle-xmark"></i>
+                                                            <span>Enquiry Rejected / Declined</span>
+                                                        </div>
+                                                        {enq.reject_reason && (
+                                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(239,68,68,0.1)', padding: '0.2rem 0.5rem', borderRadius: '0.3rem', border: '1px solid rgba(239,68,68,0.2)' }}>
+                                                                {enq.reject_reason}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', width: '100%', textAlign: 'center', padding: '0.35rem 0' }}>

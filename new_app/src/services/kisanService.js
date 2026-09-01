@@ -337,6 +337,8 @@ class KisanService {
         });
         setLocal(STORAGE_KEYS.ENQUIRIES, updatedLocal);
 
+        const targetId = updatedEnquiry?.id || enquiryIdOrCode;
+
         try {
             await supabase
                 .from('enquiries')
@@ -344,14 +346,14 @@ class KisanService {
                     status: 'accepted',
                     updated_at: acceptedAt
                 })
-                .eq('id', enquiryIdOrCode);
+                .eq('id', targetId);
         } catch (e) {
             console.warn("Supabase update enquiry error:", e);
         }
 
         if (updatedEnquiry) {
             // Generate QR token record
-            this.createQrToken(updatedEnquiry.id, updatedEnquiry.enquiry_code);
+            this.createQrToken(updatedEnquiry.id, updatedEnquiry.enquiry_code || targetId);
 
             // Notify farmer
             this.addNotification(
@@ -364,13 +366,13 @@ class KisanService {
             );
 
             // If transport required, automatically generate transport request
-            if (updatedEnquiry.transport_required) {
+            if (updatedEnquiry.transport_required || updatedEnquiry.with_transport) {
                 await this.createTransportRequestFromEnquiry(updatedEnquiry);
             }
         }
 
-        this.notify('enquiry_accepted', updatedEnquiry);
-        return updatedEnquiry;
+        this.notify('enquiry_accepted', updatedEnquiry || { id: targetId, status: 'ACCEPTED' });
+        return updatedEnquiry || { id: targetId, status: 'ACCEPTED' };
     }
 
     async rejectEnquiry(enquiryIdOrCode, reason = '') {
@@ -388,11 +390,13 @@ class KisanService {
         });
         setLocal(STORAGE_KEYS.ENQUIRIES, updatedLocal);
 
+        const targetId = updatedEnquiry?.id || enquiryIdOrCode;
+
         try {
             await supabase
                 .from('enquiries')
                 .update({ status: 'rejected', updated_at: new Date().toISOString() })
-                .eq('id', enquiryIdOrCode);
+                .eq('id', targetId);
         } catch (e) {
             console.warn("Supabase reject enquiry error:", e);
         }
@@ -402,13 +406,13 @@ class KisanService {
                 updatedEnquiry.farmer_phone,
                 'farmers',
                 'Enquiry Update',
-                `Enquiry ${updatedEnquiry.enquiry_code} was not accepted at this time by the mill.`,
+                `Enquiry ${updatedEnquiry.enquiry_code || targetId} was not accepted at this time by the mill.`,
                 'warning'
             );
         }
 
-        this.notify('enquiry_rejected', updatedEnquiry);
-        return updatedEnquiry;
+        this.notify('enquiry_rejected', updatedEnquiry || { id: targetId, status: 'REJECTED' });
+        return updatedEnquiry || { id: targetId, status: 'REJECTED' };
     }
 
     // ==========================================
