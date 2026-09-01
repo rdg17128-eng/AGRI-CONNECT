@@ -6,8 +6,19 @@ import KisanLogo from './KisanLogo';
 
 export default function LandingPage() {
     const [selectedRole, setSelectedRole] = useState(null);
+    const [googleError, setGoogleError] = useState('');
     const { user, role, signInWithGoogle } = useAuth();
     const navigate = useNavigate();
+
+    const handleGlobalGoogleLogin = async () => {
+        setGoogleError('');
+        try {
+            await signInWithGoogle();
+        } catch (err) {
+            console.error(err);
+            setGoogleError("Google sign-in failed. Please try again.");
+        }
+    };
 
     // If user is already authenticated and has a role, redirect to their portal
     React.useEffect(() => {
@@ -159,7 +170,7 @@ export default function LandingPage() {
                     <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Fast Access:</span>
                     <button
                         type="button"
-                        onClick={() => signInWithGoogle()}
+                        onClick={handleGlobalGoogleLogin}
                         style={{
                             background: 'transparent',
                             border: 'none',
@@ -185,6 +196,12 @@ export default function LandingPage() {
                         Consumer? <span onClick={() => navigate('/consumer/products')} style={{ color: 'var(--accent-gold)', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>Browse Fresh Produce</span>
                     </span>
                 </div>
+
+                {googleError && (
+                    <p style={{ color: 'var(--danger)', fontSize: '0.82rem', marginTop: '0.6rem', textAlign: 'center' }}>
+                        {googleError}
+                    </p>
+                )}
 
                 <footer style={{ marginTop: '1.75rem', opacity: 0.6, fontSize: '0.75rem', textAlign: 'center' }}>
                     <p>© 2026 KisanConnect Ecosystem • Built with React, Supabase & Leaflet</p>

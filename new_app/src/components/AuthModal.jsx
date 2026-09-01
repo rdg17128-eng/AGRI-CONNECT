@@ -25,7 +25,7 @@ export default function AuthModal({ role, onClose, onLoginSuccess }) {
             await signInWithGoogle(role.id);
         } catch (err) {
             console.error("Google sign-in error:", err);
-            setError("Google sign-in failed. Please try again or use Phone login.");
+            setError("Google sign-in failed. Please try again.");
             setGoogleLoading(false);
         }
     };
