@@ -721,14 +721,29 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                                             <i className="fa-solid fa-circle-check"></i>
                                                             <span>Accepted • Ready for Gate Delivery</span>
                                                         </div>
-                                                        <button 
-                                                            className="primary-btn" 
-                                                            onClick={() => setIsQrScannerOpen(true)}
-                                                            style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem', background: 'rgba(16, 185, 129, 0.2)', color: 'var(--primary-light)', border: '1px solid var(--primary)' }}
-                                                        >
-                                                            <i className="fa-solid fa-qrcode"></i>
-                                                            Scan QR on Arrival
-                                                        </button>
+                                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                            <button 
+                                                                className="action-btn" 
+                                                                onClick={() => setIsQrScannerOpen(true)}
+                                                                style={{ padding: '0.5rem 0.8rem', fontSize: '0.8rem', background: 'rgba(255, 255, 255, 0.08)' }}
+                                                            >
+                                                                <i className="fa-solid fa-qrcode"></i>
+                                                                Scan QR
+                                                            </button>
+                                                            <button 
+                                                                className="primary-btn" 
+                                                                onClick={async () => {
+                                                                    if (window.confirm(`Confirm gate receipt of ${enq.crop_name} (${enq.quantity || (enq.acres * 2)} Tons) from Farmer ${enq.farmer_name}?`)) {
+                                                                        await kisanService.acceptLoad(enq.enquiry_code || enq.id, loggedInMill);
+                                                                        fetchData();
+                                                                    }
+                                                                }}
+                                                                style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem' }}
+                                                            >
+                                                                <i className="fa-solid fa-circle-check"></i>
+                                                                Accept Load
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 ) : (enq.status || '').toUpperCase() === 'REJECTED' ? (
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>

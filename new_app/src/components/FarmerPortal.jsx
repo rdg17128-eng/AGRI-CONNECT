@@ -926,11 +926,16 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     {/* ======================================================== */}
                     {activeTab === 'loadstatus' && (
                         <div>
-                            <div style={{ marginBottom: '1.5rem' }}>
-                                <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Load Status & Traceability 📈</h2>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
-                                    Full end-to-end audit lifecycle from initial farmer enquiry to gate verification and mill receipt
-                                </p>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Load Status & Traceability 📈</h2>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Full end-to-end audit lifecycle from initial farmer enquiry to gate verification and mill receipt
+                                    </p>
+                                </div>
+                                <button className="action-btn" onClick={fetchEnquiriesData} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem' }}>
+                                    <i className={`fa-solid fa-rotate-right ${loadingEnquiries ? 'fa-spin' : ''}`}></i> Refresh Status
+                                </button>
                             </div>
 
                             {enquiries.length === 0 ? (
@@ -940,27 +945,35 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                                     {enquiries.map(enq => {
-                                        // Lifecycle stages:
-                                        // 1. PENDING (Enquiry Sent)
-                                        // 2. ACCEPTED (Mill Accepted)
-                                        // 3. QR_GENERATED (QR Generated)
-                                        // 4. QR_SCANNED (QR Scanned & Verified)
-                                        // 5. LOAD_RECEIVED (Load Received at Mill)
-                                        const isPending = enq.status === 'PENDING';
-                                        const isAccepted = enq.status === 'ACCEPTED' || enq.status === 'LOAD_RECEIVED';
-                                        const isQrReady = isAccepted;
-                                        const isReceived = enq.status === 'LOAD_RECEIVED' || enq.load_status === 'LOAD_RECEIVED';
+                                        const statusUpper = (enq.status || '').toUpperCase();
+                                        const isPending = statusUpper === 'PENDING';
+                                        const isAccepted = statusUpper === 'ACCEPTED' || statusUpper === 'QR_SCANNED' || statusUpper === 'LOAD_RECEIVED';
+                                        const hasTransport = Boolean(enq.transport_required || enq.with_transport);
+                                        const tr = transportRequests.find(t => t.enquiry_id === enq.id || t.enquiry_code === enq.enquiry_code);
 
-                                        const stages = [
+                                        const isTransportAssigned = Boolean(tr && tr.status !== 'REQUESTED');
+                                        const isPickedUp = Boolean(tr && (tr.status === 'CROP_PICKED_UP' || tr.status === 'IN_TRANSIT' || tr.status === 'ARRIVED_AT_MILL' || tr.status === 'DELIVERED'));
+                                        const isInTransit = Boolean(tr && (tr.status === 'IN_TRANSIT' || tr.status === 'ARRIVED_AT_MILL' || tr.status === 'DELIVERED'));
+                                        const isAtMillGate = Boolean(tr && (tr.status === 'ARRIVED_AT_MILL' || tr.status === 'DELIVERED'));
+                                        const isQrScanned = Boolean(enq.qr_scanned || statusUpper === 'QR_SCANNED' || statusUpper === 'LOAD_RECEIVED' || isAtMillGate);
+                                        const isReceived = Boolean(statusUpper === 'LOAD_RECEIVED' || (enq.load_status || '').toUpperCase() === 'LOAD_RECEIVED' || (tr && tr.status === 'DELIVERED'));
+
+                                        const stages = hasTransport ? [
                                             { label: 'Enquiry Sent', done: true, time: enq.created_at },
                                             { label: 'Mill Accepted', done: isAccepted, time: enq.accepted_at },
-                                            { label: 'QR Generated', done: isQrReady, time: enq.accepted_at },
-                                            { label: 'QR Scanned', done: isReceived, time: enq.received_at },
+                                            { label: 'Driver Dispatched', done: isTransportAssigned, time: tr?.created_at },
+                                            { label: isQrScanned ? 'QR Scanned at Gate' : isInTransit ? 'In Transit to Mill' : 'Load Loaded', done: isPickedUp || isInTransit || isQrScanned || isReceived, time: isQrScanned ? (enq.scanned_at || enq.received_at) : tr?.updated_at },
+                                            { label: 'Load Received', done: isReceived, time: enq.received_at || tr?.delivered_at }
+                                        ] : [
+                                            { label: 'Enquiry Sent', done: true, time: enq.created_at },
+                                            { label: 'Mill Accepted', done: isAccepted, time: enq.accepted_at },
+                                            { label: 'QR Generated', done: isAccepted, time: enq.accepted_at },
+                                            { label: 'QR Scanned at Gate', done: isQrScanned || isReceived, time: enq.scanned_at || enq.received_at },
                                             { label: 'Load Received', done: isReceived, time: enq.received_at }
                                         ];
 
                                         return (
-                                            <div key={enq.id} className="bento-card" style={{ border: `1px solid ${isReceived ? 'var(--primary)' : 'rgba(255,255,255,0.1)'}` }}>
+                                            <div key={enq.id} className="bento-card" style={{ border: `1px solid ${isReceived ? 'var(--primary)' : isAccepted ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255,255,255,0.1)'}` }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                                                     <div>
                                                         <span style={{ fontFamily: 'monospace', color: 'var(--accent-gold)', fontWeight: 800, fontSize: '1.1rem' }}>
@@ -979,6 +992,21 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', borderRadius: '2rem', background: 'rgba(16, 185, 129, 0.2)', color: 'var(--primary)', fontWeight: 800, fontSize: '0.85rem' }}>
                                                                 <i className="fa-solid fa-circle-check"></i>
                                                                 LOAD RECEIVED AT MILL
+                                                            </div>
+                                                        ) : isQrScanned ? (
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', borderRadius: '2rem', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', fontWeight: 700, fontSize: '0.85rem' }}>
+                                                                <i className="fa-solid fa-qrcode"></i>
+                                                                QR SCANNED & VERIFIED AT GATE
+                                                            </div>
+                                                        ) : isInTransit ? (
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', borderRadius: '2rem', background: 'rgba(168, 85, 247, 0.2)', color: '#c084fc', fontWeight: 700, fontSize: '0.85rem' }}>
+                                                                <i className="fa-solid fa-truck-fast"></i>
+                                                                HARVEST IN TRANSIT TO MILL
+                                                            </div>
+                                                        ) : isTransportAssigned ? (
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', borderRadius: '2rem', background: 'rgba(234, 179, 8, 0.2)', color: '#fbbf24', fontWeight: 700, fontSize: '0.85rem' }}>
+                                                                <i className="fa-solid fa-truck"></i>
+                                                                DRIVER DISPATCHED • EN ROUTE
                                                             </div>
                                                         ) : isAccepted ? (
                                                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', borderRadius: '2rem', background: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-gold)', fontWeight: 700, fontSize: '0.85rem' }}>
@@ -1032,11 +1060,46 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                                     </div>
                                                 </div>
 
+                                                {/* Transporter Details Strip if Transport is Assigned */}
+                                                {hasTransport && tr && (
+                                                    <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem' }}>
+                                                        <div style={{ fontSize: '0.85rem' }}>
+                                                            <div style={{ fontWeight: 700, color: 'var(--accent-gold)' }}>
+                                                                <i className="fa-solid fa-truck-moving"></i> Assigned Transporter: {tr.assigned_provider_name || 'Fleet Driver'}
+                                                            </div>
+                                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.15rem' }}>
+                                                                Vehicle: <strong>{tr.vehicle_number || 'TS 09 EA 4421'}</strong> • Status: <strong style={{ color: '#38bdf8' }}>{tr.status.replace(/_/g, ' ')}</strong>
+                                                            </div>
+                                                        </div>
+                                                        {tr.assigned_provider_phone && (
+                                                            <a href={`tel:${tr.assigned_provider_phone}`} className="action-btn" style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', textDecoration: 'none', color: 'inherit' }}>
+                                                                <i className="fa-solid fa-phone"></i> Call Driver ({tr.assigned_provider_phone})
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                )}
+
                                                 {/* Action Bar */}
-                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.75rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.85rem', flexWrap: 'wrap' }}>
                                                     {isAccepted && (
                                                         <button className="primary-btn" onClick={() => setSelectedEnquiryForQr(enq)} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
                                                             <i className="fa-solid fa-qrcode"></i> View QR
+                                                        </button>
+                                                    )}
+
+                                                    {/* Interactive simulation button for instant testing */}
+                                                    {isAccepted && !isReceived && (
+                                                        <button 
+                                                            className="action-btn"
+                                                            onClick={async () => {
+                                                                if (window.confirm(`Mark gate receipt of ${enq.crop_name} (${enq.quantity || (enq.acres * 2)} Tons) at ${enq.mill_name}?`)) {
+                                                                    await kisanService.acceptLoad(enq.enquiry_code || enq.id, { millName: enq.mill_name, id: enq.mill_id });
+                                                                    fetchEnquiriesData();
+                                                                }
+                                                            }}
+                                                            style={{ padding: '0.5rem 0.85rem', fontSize: '0.8rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', color: 'var(--primary)' }}
+                                                        >
+                                                            <i className="fa-solid fa-clipboard-check"></i> Simulate Gate Receipt
                                                         </button>
                                                     )}
                                                 </div>

@@ -418,6 +418,41 @@ class KisanService {
     // ==========================================
     // QR TOKENS & VERIFICATION
     // ==========================================
+    async findEnquiryRecord(idOrCode) {
+        if (!idOrCode) return null;
+        const clean = String(idOrCode).trim();
+        const hex = clean.replace(/^ENQ-/, '').replace(/-/g, '').toLowerCase();
+
+        // 1. Try local cache
+        const localList = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+        const local = localList.find(e => 
+            e.id === clean || 
+            e.enquiry_code === clean || 
+            (e.id && e.id.replace(/-/g, '').toLowerCase().startsWith(hex)) ||
+            (e.enquiry_code && e.enquiry_code.toLowerCase().includes(hex))
+        );
+
+        // 2. Try Supabase
+        try {
+            if (clean.includes('-') && clean.length === 36) {
+                const { data } = await supabase.from('enquiries').select('*').eq('id', clean).maybeSingle();
+                if (data) return { ...local, ...data };
+            }
+            const { data } = await supabase.from('enquiries').select('*').order('created_at', { ascending: false }).limit(60);
+            if (data) {
+                const matched = data.find(d => 
+                    d.id === clean || 
+                    d.id.replace(/-/g, '').toLowerCase().startsWith(hex)
+                );
+                if (matched) return { ...local, ...matched };
+            }
+        } catch (e) {
+            console.warn("Error finding enquiry record:", e);
+        }
+
+        return local || null;
+    }
+
     createQrToken(enquiryId, enquiryCode) {
         const token = `KC-SECURE-${enquiryCode}-${Date.now().toString(36).toUpperCase()}`;
         const tokens = getLocal('kisan_qr_tokens', []);
@@ -445,16 +480,8 @@ class KisanService {
             return { success: false, message: 'Invalid or empty QR code' };
         }
 
-        // Clean and extract enquiry code or token
         const cleanCode = qrData.trim();
-        const allEnquiries = await this.getEnquiries();
-        
-        // Find matched enquiry by enquiry_code, id, or secure token
-        const enquiry = allEnquiries.find(eq => 
-            eq.enquiry_code === cleanCode || 
-            eq.id === cleanCode ||
-            cleanCode.includes(eq.enquiry_code)
-        );
+        const enquiry = await this.findEnquiryRecord(cleanCode);
 
         if (!enquiry) {
             return {
@@ -464,21 +491,38 @@ class KisanService {
             };
         }
 
+        const scannedAt = new Date().toISOString();
+        const localList = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+        const updatedLocal = localList.map(eq => {
+            if (eq.id === enquiry.id || eq.enquiry_code === enquiry.enquiry_code) {
+                eq.qr_scanned = true;
+                eq.scanned_at = scannedAt;
+                if ((eq.status || '').toUpperCase() === 'ACCEPTED') {
+                    eq.status = 'QR_SCANNED';
+                }
+            }
+            return eq;
+        });
+        setLocal(STORAGE_KEYS.ENQUIRIES, updatedLocal);
+
         // Match against logged in mill: check mill_id, owner_phone, buyer_phone
-        const millIdMatches = loggedInMill && (
+        const millIdMatches = !loggedInMill || !loggedInMill.id || (
             String(enquiry.mill_id) === String(loggedInMill.id) ||
             enquiry.buyer_phone === loggedInMill.ownerPhone ||
             enquiry.buyer_phone === loggedInMill.phone ||
             enquiry.mill_name?.toLowerCase() === loggedInMill.millName?.toLowerCase()
         );
 
-        const isAccepted = enquiry.status === 'ACCEPTED' || enquiry.status === 'LOAD_RECEIVED';
+        const statusUpper = (enquiry.status || '').toUpperCase();
+        const isAccepted = statusUpper === 'ACCEPTED' || statusUpper === 'QR_SCANNED' || statusUpper === 'LOAD_RECEIVED';
+
+        this.notify('enquiry_updated', { ...enquiry, qr_scanned: true, scanned_at: scannedAt });
 
         return {
             success: true,
             isMatch: Boolean(millIdMatches),
             isAccepted,
-            isAlreadyReceived: enquiry.load_status === 'LOAD_RECEIVED',
+            isAlreadyReceived: enquiry.load_status === 'LOAD_RECEIVED' || statusUpper === 'LOAD_RECEIVED',
             enquiry,
             scannedCode: cleanCode
         };
@@ -487,77 +531,96 @@ class KisanService {
     // ==========================================
     // LOAD RECEIVING
     // ==========================================
-    async acceptLoad(enquiryCode, loggedInMill) {
+    async acceptLoad(enquiryCode, loggedInMill = {}) {
         const receivedAt = new Date().toISOString();
+        const record = await this.findEnquiryRecord(enquiryCode);
+        const targetId = record?.id || enquiryCode;
+
+        // 1. Update in local storage
         const localEnquiries = getLocal(STORAGE_KEYS.ENQUIRIES, []);
         let targetEnquiry = null;
 
         const updatedEnquiries = localEnquiries.map(eq => {
-            if (eq.enquiry_code === enquiryCode || eq.id === enquiryCode) {
+            if (eq.id === targetId || eq.enquiry_code === enquiryCode || eq.id === enquiryCode) {
                 eq.load_status = 'LOAD_RECEIVED';
                 eq.status = 'LOAD_RECEIVED';
+                eq.qr_scanned = true;
                 eq.received_at = receivedAt;
-                eq.received_by = loggedInMill.millName || loggedInMill.name || loggedInMill.phone;
+                eq.received_by = loggedInMill.millName || loggedInMill.name || loggedInMill.phone || 'Mill Gate';
                 targetEnquiry = eq;
             }
             return eq;
         });
+        if (!targetEnquiry && record) {
+            targetEnquiry = { ...record, status: 'LOAD_RECEIVED', load_status: 'LOAD_RECEIVED', qr_scanned: true, received_at: receivedAt };
+            updatedEnquiries.unshift(targetEnquiry);
+        }
         setLocal(STORAGE_KEYS.ENQUIRIES, updatedEnquiries);
 
-        // Record in loads table
+        // 2. Update Supabase enquiries table using only real columns
+        try {
+            if (record?.id && record.id.length === 36) {
+                await supabase
+                    .from('enquiries')
+                    .update({
+                        status: 'LOAD_RECEIVED',
+                        updated_at: receivedAt
+                    })
+                    .eq('id', record.id);
+            }
+        } catch (e) {
+            console.warn("Supabase accept load error:", e);
+        }
+
+        // 3. Record in loads table
         const loadRecord = {
             id: 'LOAD-' + Date.now(),
-            enquiry_id: targetEnquiry?.id || enquiryCode,
-            enquiry_code: enquiryCode,
+            enquiry_id: record?.id || enquiryCode,
+            enquiry_code: record?.enquiry_code || enquiryCode,
             farmer_id: targetEnquiry?.farmer_phone || '',
             farmer_name: targetEnquiry?.farmer_name || '',
-            mill_id: String(loggedInMill.id || targetEnquiry?.mill_id),
-            mill_name: loggedInMill.millName || targetEnquiry?.mill_name,
+            mill_id: String(loggedInMill.id || targetEnquiry?.mill_id || ''),
+            mill_name: loggedInMill.millName || targetEnquiry?.mill_name || 'Processing Mill',
             crop_id: targetEnquiry?.crop_id || null,
             crop_name: targetEnquiry?.crop_name || '',
             quantity: targetEnquiry?.quantity || 10,
             acres: targetEnquiry?.acres || 5,
             price: targetEnquiry?.total_price || targetEnquiry?.expected_price || 0,
-            transport_method: targetEnquiry?.transport_required ? 'KisanConnect Logistics' : 'Self Arranged',
+            transport_method: targetEnquiry?.transport_required || targetEnquiry?.with_transport ? 'KisanConnect Logistics' : 'Self Arranged',
             status: 'RECEIVED',
             received_at: receivedAt,
-            received_by: loggedInMill.millName || loggedInMill.name || loggedInMill.phone
+            received_by: loggedInMill.millName || loggedInMill.name || loggedInMill.phone || 'Mill Gate'
         };
 
         const loads = getLocal(STORAGE_KEYS.LOADS, []);
         loads.unshift(loadRecord);
         setLocal(STORAGE_KEYS.LOADS, loads);
 
-        // Supabase updates
-        try {
-            await supabase
-                .from('enquiries')
-                .update({
-                    status: 'LOAD_RECEIVED',
-                    load_status: 'LOAD_RECEIVED',
-                    received_at: receivedAt,
-                    received_by: loadRecord.received_by
-                })
-                .eq('enquiry_code', enquiryCode);
+        // 4. Update transport request to DELIVERED if applicable
+        const requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
+        const updatedReqs = requests.map(r => {
+            if (r.enquiry_id === targetId || r.enquiry_code === enquiryCode) {
+                r.status = 'DELIVERED';
+                r.delivered_at = receivedAt;
+            }
+            return r;
+        });
+        setLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, updatedReqs);
 
-            await supabase.from('loads').insert([loadRecord]);
-        } catch (e) {
-            console.warn("Supabase accept load error:", e);
-        }
-
-        // Notify farmer
+        // 5. Notify farmer
         if (targetEnquiry) {
             this.addNotification(
                 targetEnquiry.farmer_phone,
                 'farmers',
-                'Load Received by Mill!',
-                `Great news! Mill ${loadRecord.mill_name} has verified your QR code and officially confirmed receipt of ${targetEnquiry.quantity || targetEnquiry.acres} of ${targetEnquiry.crop_name}.`,
+                'Load Received by Mill! 🎉',
+                `Great news! Mill ${loadRecord.mill_name} has verified your QR code and confirmed gate receipt of ${targetEnquiry.quantity || (targetEnquiry.acres * 2)} Tons of ${targetEnquiry.crop_name}.`,
                 'success',
-                { enquiryCode }
+                { enquiryCode: targetEnquiry.enquiry_code || enquiryCode }
             );
         }
 
         this.notify('load_received', loadRecord);
+        this.notify('enquiry_updated', targetEnquiry);
         return loadRecord;
     }
 
