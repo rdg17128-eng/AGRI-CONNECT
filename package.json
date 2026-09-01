@@ -1,8 +1,0 @@
-{
-  "name": "kisanconnect-root",
-  "private": true,
-  "scripts": {
-    "dev": "npm --prefix new_app run dev",
-    "build": "npm --prefix new_app run build"
-  }
-}
