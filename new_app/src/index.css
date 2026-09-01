@@ -377,7 +377,7 @@ h6 {
 
 /* Dashboard */
 .dashboard {
-    padding: 2rem;
+    padding: 1.75rem;
     max-width: 1600px;
     margin: 0 auto;
     width: 100%;
@@ -387,21 +387,21 @@ h6 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 2rem;
+    margin-bottom: 1.75rem;
     animation: fadeInDown 0.6s ease-out;
 }
 
 .welcome-section h1 {
-    font-size: 2.5rem;
+    font-size: 1.85rem;
     font-weight: 800;
-    margin-bottom: 0.5rem;
-    background: linear-gradient(90deg, #ffffff, var(--primary), #ffffff);
+    margin-bottom: 0.35rem;
+    background: linear-gradient(90deg, #ffffff, var(--primary), var(--accent-gold), #ffffff);
     background-size: 200% auto;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: shineText 6s linear infinite;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.02em;
 }
 
 @keyframes shineText {
@@ -412,40 +412,40 @@ h6 {
 
 .welcome-section p {
     color: var(--text-muted);
+    font-size: 0.88rem;
 }
 
 .primary-btn {
     background: linear-gradient(135deg, var(--primary), var(--primary-dark));
     border: 1px solid var(--primary-light);
-    color: #000;
-    padding: 0.9rem 2.2rem;
-    border-radius: 1.25rem;
-    font-weight: 800;
+    color: #022013;
+    padding: 0.75rem 1.6rem;
+    border-radius: 0.85rem;
+    font-weight: 700;
     font-family: var(--font-heading);
-    font-size: 1rem;
+    font-size: 0.92rem;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.75rem;
-    box-shadow: 0 15px 30px rgba(0, 255, 138, 0.3);
+    gap: 0.6rem;
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25);
     transition: var(--transition);
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
 }
 
 .primary-btn:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 0 30px rgba(0, 255, 136, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.3);
-    background: linear-gradient(135deg, rgba(0, 255, 136, 1), rgba(0, 204, 108, 0.9));
+    transform: translateY(-2px);
+    box-shadow: 0 0 25px rgba(16, 185, 129, 0.4), inset 0 0 8px rgba(255, 255, 255, 0.25);
+    background: linear-gradient(135deg, var(--primary-light), var(--primary));
 }
 
 /* Stats Cards */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.75rem;
 }
 
 .stat-card {
@@ -453,22 +453,22 @@ h6 {
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     border: 1px solid var(--border-color);
-    border-radius: 2.5rem;
-    padding: 2.5rem;
+    border-radius: 1.25rem;
+    padding: 1.35rem 1.6rem;
     display: flex;
     align-items: center;
-    gap: 2rem;
+    gap: 1.25rem;
     transition: var(--transition);
     position: relative;
     overflow: hidden;
-    box-shadow: var(--shadow-premium);
+    box-shadow: var(--shadow-sm);
 }
 
 .stat-card:hover {
-    transform: translateY(-8px);
+    transform: translateY(-3px);
     border-color: var(--border-highlight);
     background: var(--bg-card-hover);
-    box-shadow: 0 40px 80px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 255, 138, 0.15);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(245, 158, 11, 0.15);
 }
 
 .stat-card::before {
@@ -588,18 +588,18 @@ h6 {
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     border: 1px solid var(--border-color);
-    border-radius: 2.5rem;
-    padding: 2.5rem;
+    border-radius: 1.25rem;
+    padding: 1.5rem;
     transition: var(--transition);
     position: relative;
     overflow: hidden;
-    box-shadow: var(--shadow-premium);
+    box-shadow: var(--shadow-sm);
 }
 
 .bento-card:hover {
-    transform: translateY(-10px) scale(1.01);
+    transform: translateY(-3px);
     border-color: var(--border-highlight);
-    box-shadow: 0 50px 100px rgba(0, 0, 0, 0.9), 0 0 30px rgba(0, 255, 138, 0.2);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 25px rgba(16, 185, 129, 0.12);
 }
 
 .bento-card::after {
@@ -1687,4 +1687,117 @@ h6 {
     border-radius: 0.75rem;
     object-fit: cover;
     max-height: 280px !important;
-}
+}
+
+/* ==========================================
+   HISTORY & AUDIT LOGS (GREEN & GOLD THEME)
+   ========================================== */
+.history-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    animation: fadeIn 0.4s ease-out;
+}
+
+.history-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.history-stat-card {
+    background: rgba(10, 26, 17, 0.75);
+    border: 1px solid rgba(16, 185, 129, 0.18);
+    border-radius: 1rem;
+    padding: 1.15rem 1.35rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: var(--transition);
+}
+
+.history-stat-card:hover {
+    border-color: rgba(245, 158, 11, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.history-filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 1.25rem;
+}
+
+.history-filter-btn {
+    padding: 0.45rem 1rem;
+    border-radius: 2rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+    transition: var(--transition);
+}
+
+.history-filter-btn:hover {
+    color: var(--text-main);
+    border-color: var(--primary);
+}
+
+.history-filter-btn.active {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(245, 158, 11, 0.15));
+    border-color: var(--primary);
+    color: var(--primary-light);
+    font-weight: 700;
+}
+
+.history-card {
+    background: rgba(9, 23, 15, 0.75);
+    border: 1px solid rgba(16, 185, 129, 0.14);
+    border-radius: 1rem;
+    padding: 1.2rem 1.4rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    transition: var(--transition);
+    border-left: 4px solid var(--primary);
+}
+
+.history-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(245, 158, 11, 0.45);
+    border-left-color: var(--accent-gold);
+    background: rgba(14, 32, 22, 0.88);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35), 0 0 15px rgba(245, 158, 11, 0.1);
+}
+
+.history-card.gold-border {
+    border-left-color: var(--accent-gold);
+}
+
+.badge-green {
+    background: rgba(16, 185, 129, 0.16);
+    color: var(--primary);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 0.2rem 0.65rem;
+    border-radius: 2rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.badge-gold {
+    background: rgba(245, 158, 11, 0.16);
+    color: var(--accent-gold);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 0.2rem 0.65rem;
+    border-radius: 2rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+

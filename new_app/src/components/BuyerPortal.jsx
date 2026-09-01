@@ -40,11 +40,13 @@ export default function BuyerPortal({ user, onLogout }) {
     const [loadingMills, setLoadingMills] = useState(true);
     const [selectedMillForPricing, setSelectedMillForPricing] = useState(null);
 
-    // Enquiry & Load States
+    // Enquiry, Load & History States
     const [enquiries, setEnquiries] = useState([]);
     const [loadingEnquiries, setLoadingEnquiries] = useState(true);
     const [loadsReceived, setLoadsReceived] = useState([]);
     const [transportRequests, setTransportRequests] = useState([]);
+    const [millHistory, setMillHistory] = useState([]);
+    const [historyFilter, setHistoryFilter] = useState('ALL');
     
     // Modal States
     const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
@@ -71,8 +73,18 @@ export default function BuyerPortal({ user, onLogout }) {
         await Promise.all([
             fetchEnquiries(),
             fetchLoadsReceived(),
-            fetchTransportRequests()
+            fetchTransportRequests(),
+            fetchHistoryData()
         ]);
+    };
+
+    const fetchHistoryData = async () => {
+        try {
+            const hist = await kisanService.getMillHistory(mills[0]?.id || user.phone, user.phone);
+            setMillHistory(hist);
+        } catch (err) {
+            console.error("History fetch error:", err);
+        }
     };
 
     const fetchMills = async () => {
@@ -267,6 +279,10 @@ export default function BuyerPortal({ user, onLogout }) {
                     <a className={`nav-item ${activeTab === 'mills' ? 'active' : ''}`} onClick={() => { setActiveTab('mills'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-industry"></i>
                         <span>My Mills & Pricing</span>
+                    </a>
+                    <a className={`nav-item ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-clock-rotate-left"></i>
+                        <span>Procurement History</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { setActiveTab('profile'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-user-gear"></i>
@@ -797,6 +813,136 @@ export default function BuyerPortal({ user, onLogout }) {
                                     </table>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: PROCUREMENT HISTORY & AUDIT LEDGER */}
+                    {/* ======================================================== */}
+                    {activeTab === 'history' && (
+                        <div className="history-container">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800 }}>Procurement Audit Ledger 📜</h2>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Complete historical record of all gate-verified crop batches, farmer proposals, and intake receipts
+                                    </p>
+                                </div>
+                                <button className="action-btn" onClick={refreshAllData} style={{ fontSize: '0.85rem' }}>
+                                    <i className="fa-solid fa-rotate-right"></i> Refresh Audit Log
+                                </button>
+                            </div>
+
+                            {/* Summary Metric Cards */}
+                            <div className="history-summary-grid">
+                                <div className="history-stat-card">
+                                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                                        <i className="fa-solid fa-weight-hanging"></i>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Procured Intake</div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary)' }}>
+                                            {millHistory.filter(h => h.category === 'LOAD_VERIFIED').reduce((acc, h) => acc + (Number(h.quantity) || 0), 0)} Tons
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="history-stat-card">
+                                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                                        <i className="fa-solid fa-qrcode"></i>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>QR Gate Scans</div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                                            {millHistory.filter(h => h.category === 'LOAD_VERIFIED').length} Verified
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="history-stat-card">
+                                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                                        <i className="fa-solid fa-file-shield"></i>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total Entries</div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                                            {millHistory.length} Logged
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Filter Chips */}
+                            <div className="history-filters">
+                                {[
+                                    { label: 'All History', val: 'ALL' },
+                                    { label: 'Verified Loads', val: 'LOAD_VERIFIED' },
+                                    { label: 'Accepted Enquiries', val: 'ENQUIRY_ACCEPTED' },
+                                    { label: 'Declined', val: 'ENQUIRY_REJECTED' }
+                                ].map(f => (
+                                    <button
+                                        key={f.val}
+                                        className={`history-filter-btn ${historyFilter === f.val ? 'active' : ''}`}
+                                        onClick={() => setHistoryFilter(f.val)}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Ledger Table */}
+                            {millHistory.filter(h => historyFilter === 'ALL' || h.category === historyFilter).length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
+                                    <i className="fa-solid fa-clock-rotate-left fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                    <h3>No Records Found</h3>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No procurement history records matching "{historyFilter}".</p>
+                                </div>
+                            ) : (
+                                <div className="bento-card" style={{ padding: '1.25rem' }}>
+                                    <div className="table-responsive">
+                                        <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                    <th style={{ padding: '0.8rem 1rem' }}>Enquiry Code</th>
+                                                    <th style={{ padding: '0.8rem 1rem' }}>Farmer</th>
+                                                    <th style={{ padding: '0.8rem 1rem' }}>Commodity & Qty</th>
+                                                    <th style={{ padding: '0.8rem 1rem' }}>Verification Time</th>
+                                                    <th style={{ padding: '0.8rem 1rem' }}>Logged By</th>
+                                                    <th style={{ padding: '0.8rem 1rem' }}>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {millHistory
+                                                    .filter(h => historyFilter === 'ALL' || h.category === historyFilter)
+                                                    .map(item => (
+                                                        <tr key={item.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.86rem' }}>
+                                                            <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                                                                {item.enquiry_code}
+                                                            </td>
+                                                            <td style={{ padding: '0.85rem 1rem' }}>
+                                                                <strong>{item.farmer_name}</strong>
+                                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.farmer_phone}</div>
+                                                            </td>
+                                                            <td style={{ padding: '0.85rem 1rem' }}>
+                                                                <strong style={{ color: 'var(--primary)' }}>{item.crop_name}</strong>
+                                                                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{item.quantity} Tons ({item.acres} Acres)</div>
+                                                            </td>
+                                                            <td style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                                {item.date ? new Date(item.date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Pending'}
+                                                            </td>
+                                                            <td style={{ padding: '0.85rem 1rem', fontSize: '0.8rem' }}>
+                                                                {item.operator || 'Mill Procurement'}
+                                                            </td>
+                                                            <td style={{ padding: '0.85rem 1rem' }}>
+                                                                <span className={item.category === 'LOAD_VERIFIED' || item.category === 'ENQUIRY_ACCEPTED' ? 'badge-green' : 'badge-gold'}>
+                                                                    {item.status}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

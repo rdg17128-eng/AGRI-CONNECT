@@ -7,6 +7,8 @@ export default function TransportPortal({ user, onLogout }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [transportRequests, setTransportRequests] = useState([]);
     const [myQuotes, setMyQuotes] = useState([]);
+    const [tripHistory, setTripHistory] = useState([]);
+    const [historyFilter, setHistoryFilter] = useState('ALL');
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [quotePrice, setQuotePrice] = useState('');
     const [quoteTime, setQuoteTime] = useState('2.5 Hours');
@@ -29,6 +31,8 @@ export default function TransportPortal({ user, onLogout }) {
         setTransportRequests(allReqs);
         const quotes = kisanService.getQuotesForRequest('');
         setMyQuotes(quotes.filter(q => q.provider_phone === providerInfo.phone || q.provider_id === providerInfo.phone));
+        const hist = kisanService.getTransporterHistory(providerInfo.phone);
+        setTripHistory(hist);
     };
 
     useEffect(() => {
@@ -134,6 +138,10 @@ export default function TransportPortal({ user, onLogout }) {
                     <a className={`nav-item ${activeTab === 'completed' ? 'active' : ''}`} onClick={() => { setActiveTab('completed'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-circle-check"></i>
                         <span>Completed Deliveries</span>
+                    </a>
+                    <a className={`nav-item ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-clock-rotate-left"></i>
+                        <span>Trip History & Earnings</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'vehicle' ? 'active' : ''}`} onClick={() => { setActiveTab('vehicle'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-truck-ramp-box"></i>
@@ -479,6 +487,143 @@ export default function TransportPortal({ user, onLogout }) {
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: TRIP HISTORY & EARNINGS */}
+                    {/* ======================================================== */}
+                    {activeTab === 'history' && (
+                        <div className="history-container">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800 }}>Trip History & Freight Earnings 🚛</h2>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Complete archive of completed farm pickups, mill drop-offs, and earnings payouts
+                                    </p>
+                                </div>
+                                <button className="action-btn" onClick={refreshData} style={{ fontSize: '0.85rem' }}>
+                                    <i className="fa-solid fa-rotate-right"></i> Refresh History
+                                </button>
+                            </div>
+
+                            {/* Summary Metric Cards */}
+                            <div className="history-summary-grid">
+                                <div className="history-stat-card">
+                                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                                        <i className="fa-solid fa-circle-check"></i>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Trips Completed</div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary)' }}>
+                                            {tripHistory.filter(t => t.status === 'COMPLETED').length} Loads
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="history-stat-card">
+                                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                                        <i className="fa-solid fa-weight-hanging"></i>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cargo Moved</div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                                            {tripHistory.reduce((acc, t) => acc + (Number(t.quantity) || 0), 0)} Tons
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="history-stat-card">
+                                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                                        <i className="fa-solid fa-wallet"></i>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Freight Earnings</div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                                            ₹{tripHistory.reduce((acc, t) => acc + (Number(t.earnings) || 0), 0).toLocaleString('en-IN')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Filter Chips */}
+                            <div className="history-filters">
+                                {[
+                                    { label: 'All Trips', val: 'ALL' },
+                                    { label: 'Completed', val: 'COMPLETED' },
+                                    { label: 'In Transit', val: 'IN_TRANSIT' }
+                                ].map(f => (
+                                    <button
+                                        key={f.val}
+                                        className={`history-filter-btn ${historyFilter === f.val ? 'active' : ''}`}
+                                        onClick={() => setHistoryFilter(f.val)}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Trip History Feed */}
+                            {tripHistory.filter(t => historyFilter === 'ALL' || t.status === historyFilter).length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
+                                    <i className="fa-solid fa-truck-moving fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                    <h3>No Trip History Recorded</h3>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No trips matching the "{historyFilter}" filter.</p>
+                                </div>
+                            ) : (
+                                <div className="history-feed">
+                                    {tripHistory
+                                        .filter(t => historyFilter === 'ALL' || t.status === historyFilter)
+                                        .map(trip => (
+                                            <div key={trip.id} className="history-card">
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '220px' }}>
+                                                    <div style={{
+                                                        width: '42px',
+                                                        height: '42px',
+                                                        borderRadius: '50%',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        background: trip.status === 'COMPLETED' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                                        color: trip.status === 'COMPLETED' ? 'var(--primary)' : 'var(--accent-gold)'
+                                                    }}>
+                                                        <i className={`fa-solid ${trip.status === 'COMPLETED' ? 'fa-circle-check' : 'fa-truck-fast'}`}></i>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)', fontSize: '0.95rem' }}>
+                                                            {trip.transport_code}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                            {new Date(trip.date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ flex: 1, minWidth: '220px' }}>
+                                                    <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', marginBottom: '0.2rem' }}>
+                                                        {trip.crop_name} Delivery ({trip.quantity} Tons)
+                                                    </div>
+                                                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                                                        <span>From: <strong>{trip.pickup}</strong></span> ➔ <span>To: <strong>{trip.delivery}</strong></span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                                                        Vehicle: <strong>{trip.vehicle_number}</strong> • Enquiry: <span style={{ fontFamily: 'monospace' }}>{trip.enquiry_code}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Payout Earned</div>
+                                                        <div style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '1.15rem' }}>
+                                                            ₹{Number(trip.earnings).toLocaleString('en-IN')}
+                                                        </div>
+                                                    </div>
+                                                    <span className={trip.status === 'COMPLETED' ? 'badge-green' : 'badge-gold'}>
+                                                        {trip.status}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
                                 </div>
                             )}
                         </div>

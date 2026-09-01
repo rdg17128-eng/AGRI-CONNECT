@@ -52,11 +52,13 @@ export default function FarmerPortal({ user, onLogout }) {
     const [selectedCropForSearch, setSelectedCropForSearch] = useState(null);
     const [selectedMillForEnquiry, setSelectedMillForEnquiry] = useState(null);
 
-    // Enquiry, QR & Transport States
+    // Enquiry, QR, Transport & History States
     const [enquiries, setEnquiries] = useState([]);
     const [transportRequests, setTransportRequests] = useState([]);
     const [selectedEnquiryForQr, setSelectedEnquiryForQr] = useState(null);
     const [loadingEnquiries, setLoadingEnquiries] = useState(false);
+    const [historyList, setHistoryList] = useState([]);
+    const [historyFilter, setHistoryFilter] = useState('ALL');
 
     // Orders State (legacy compatibility)
     const [orders, setOrders] = useState([]);
@@ -128,8 +130,10 @@ export default function FarmerPortal({ user, onLogout }) {
             setEnquiries(list);
             const reqs = kisanService.getTransportRequests({ farmerPhone: user.phone });
             setTransportRequests(reqs);
+            const hist = await kisanService.getFarmerHistory(user.phone);
+            setHistoryList(hist);
         } catch (e) {
-            console.error("Error fetching farmer enquiries:", e);
+            console.error("Error fetching farmer enquiries & history:", e);
         } finally {
             setLoadingEnquiries(false);
         }
@@ -395,6 +399,10 @@ export default function FarmerPortal({ user, onLogout }) {
                     <a className={`nav-item ${activeTab === 'transport' ? 'active' : ''}`} onClick={() => { setActiveTab('transport'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-truck-fast"></i>
                         <span>Transport</span>
+                    </a>
+                    <a className={`nav-item ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-clock-rotate-left"></i>
+                        <span>History & Ledger</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'market' ? 'active' : ''}`} onClick={() => { setActiveTab('market'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-chart-line"></i>
@@ -1114,6 +1122,144 @@ export default function FarmerPortal({ user, onLogout }) {
                                     </table>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* ======================================================== */}
+                    {/* TAB: HISTORY & LEDGER */}
+                    {/* ======================================================== */}
+                    {activeTab === 'history' && (
+                        <div className="history-container">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800 }}>Harvest & Transaction History 📜</h2>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Complete chronological audit log of your enquiries, verified gate receipts, and transport trips
+                                    </p>
+                                </div>
+                                <button className="action-btn" onClick={fetchEnquiriesData} style={{ fontSize: '0.85rem' }}>
+                                    <i className="fa-solid fa-rotate-right"></i> Refresh Ledger
+                                </button>
+                            </div>
+
+                            {/* Summary Metric Cards */}
+                            <div className="history-summary-grid">
+                                <div className="history-stat-card">
+                                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                                        <i className="fa-solid fa-wheat-awn"></i>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Lifetime Tonnage</div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                                            {historyList.reduce((acc, h) => acc + (Number(h.quantity) || 0), 0)} Tons
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="history-stat-card">
+                                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                                        <i className="fa-solid fa-truck-ramp-box"></i>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Verified Loads</div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                                            {historyList.filter(h => h.category === 'LOAD_RECEIVED').length} Delivered
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="history-stat-card">
+                                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                                        <i className="fa-solid fa-receipt"></i>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total Entries</div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                                            {historyList.length} Logged
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Filter Chips */}
+                            <div className="history-filters">
+                                {[
+                                    { label: 'All History', val: 'ALL' },
+                                    { label: 'Loads Received', val: 'LOAD_RECEIVED' },
+                                    { label: 'Enquiries', val: 'ENQUIRY' },
+                                    { label: 'Transport', val: 'TRANSPORT' }
+                                ].map(f => (
+                                    <button
+                                        key={f.val}
+                                        className={`history-filter-btn ${historyFilter === f.val ? 'active' : ''}`}
+                                        onClick={() => setHistoryFilter(f.val)}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* History List */}
+                            {historyList.filter(h => historyFilter === 'ALL' || h.category === historyFilter).length === 0 ? (
+                                <div className="bento-card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
+                                    <i className="fa-solid fa-clock-rotate-left fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                    <h3>No Records Found</h3>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No ledger history found under the "{historyFilter}" filter.</p>
+                                </div>
+                            ) : (
+                                <div className="history-feed">
+                                    {historyList
+                                        .filter(h => historyFilter === 'ALL' || h.category === historyFilter)
+                                        .map(item => (
+                                            <div key={item.id} className={`history-card ${item.category === 'LOAD_RECEIVED' ? '' : 'gold-border'}`}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '220px' }}>
+                                                    <div style={{
+                                                        width: '42px',
+                                                        height: '42px',
+                                                        borderRadius: '50%',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        background: item.category === 'LOAD_RECEIVED' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                                        color: item.category === 'LOAD_RECEIVED' ? 'var(--primary)' : 'var(--accent-gold)'
+                                                    }}>
+                                                        <i className={`fa-solid ${item.category === 'LOAD_RECEIVED' ? 'fa-circle-check' : item.category === 'TRANSPORT' ? 'fa-truck-moving' : 'fa-file-lines'}`}></i>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)', fontSize: '0.95rem' }}>
+                                                            {item.enquiry_code}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                            {new Date(item.date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ flex: 1, minWidth: '220px' }}>
+                                                    <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', marginBottom: '0.2rem' }}>
+                                                        {item.title}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                                                        <strong style={{ color: 'var(--primary)' }}>{item.crop_name}</strong> • {item.quantity} Tons {item.acres ? `(${item.acres} Acres)` : ''} • Partner: <strong>{item.partner}</strong>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem', fontStyle: 'italic' }}>
+                                                        {item.details}
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                    {item.value && (
+                                                        <div style={{ textAlign: 'right' }}>
+                                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Value</div>
+                                                            <div style={{ fontWeight: 800, color: 'var(--accent-gold)', fontSize: '0.95rem' }}>{item.value}</div>
+                                                        </div>
+                                                    )}
+                                                    <span className={item.category === 'LOAD_RECEIVED' ? 'badge-green' : 'badge-gold'}>
+                                                        {item.status}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
                         </div>
                     )}
 
