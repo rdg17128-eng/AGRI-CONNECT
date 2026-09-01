@@ -597,34 +597,68 @@ class KisanService {
         const transportCode = generateTransportId();
         const quantityTons = Number(enquiry.quantity) || (Number(enquiry.acres) * 2) || 10;
         
+        // 1. Get available transport providers
+        const allProviders = getLocal(STORAGE_KEYS.TRANSPORT_PROVIDERS, DEFAULT_PROVIDERS);
+        const availableProviders = allProviders.filter(p => (p.availability || 'AVAILABLE') === 'AVAILABLE');
+        
+        // 2. Filter providers by vehicle capacity matching the crop load
+        let candidateDrivers = availableProviders.filter(p => p.capacity >= quantityTons);
+        if (candidateDrivers.length === 0) {
+            candidateDrivers = availableProviders.length > 0 ? availableProviders : allProviders;
+        }
+
+        // 3. Randomly select an available and free driver
+        const assignedDriver = candidateDrivers[Math.floor(Math.random() * candidateDrivers.length)] || allProviders[0];
+
+        // 4. Calculate route distance and agreed haulage price
+        const dist = Number(enquiry.distance) || calculateDistance(
+            enquiry.farmer_lat || 17.0916, 
+            enquiry.farmer_lng || 80.0210, 
+            enquiry.mill_lat || 17.1033, 
+            enquiry.mill_lng || 80.0536
+        ) || 38.5;
+        const agreedPrice = Math.round(dist * (assignedDriver.price_per_km || 35));
+
         const req = {
             id: 'TR-' + Date.now(),
             transport_code: transportCode,
             enquiry_id: enquiry.id,
-            enquiry_code: enquiry.enquiry_code,
+            enquiry_code: enquiry.enquiry_code || ('ENQ-' + (enquiry.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()),
             farmer_id: enquiry.farmer_phone,
             farmer_name: enquiry.farmer_name,
             farmer_phone: enquiry.farmer_phone,
             mill_id: enquiry.mill_id,
             mill_name: enquiry.mill_name,
+            buyer_phone: enquiry.buyer_phone,
             crop_name: enquiry.crop_name,
             quantity: quantityTons,
-            pickup_lat: enquiry.farmer_lat,
-            pickup_lng: enquiry.farmer_lng,
+            acres: enquiry.acres || Math.round(quantityTons / 2) || 5,
+            pickup_lat: enquiry.farmer_lat || 17.0916,
+            pickup_lng: enquiry.farmer_lng || 80.0210,
             pickup_address: enquiry.farmer_location_name || enquiry.pickup_location || 'Farmer Farm Location',
-            delivery_lat: enquiry.mill_lat,
-            delivery_lng: enquiry.mill_lng,
+            delivery_lat: enquiry.mill_lat || 17.1033,
+            delivery_lng: enquiry.mill_lng || 80.0536,
             delivery_address: enquiry.mill_location_name || enquiry.delivery_location || 'Processing Mill',
             required_capacity: quantityTons,
-            vehicle_type: enquiry.vehicle_type || 'Truck',
+            vehicle_type: assignedDriver.vehicle_type || enquiry.vehicle_type || 'Truck',
+            vehicle_number: assignedDriver.vehicle_number,
             pickup_date: enquiry.pickup_date || new Date().toISOString().split('T')[0],
-            distance: enquiry.distance || calculateDistance(enquiry.farmer_lat, enquiry.farmer_lng, enquiry.mill_lat, enquiry.mill_lng) || 35,
-            status: 'SEARCHING',
+            distance: dist,
+            assigned_provider_id: assignedDriver.phone,
+            assigned_provider_name: assignedDriver.name,
+            assigned_provider_phone: assignedDriver.phone,
+            final_price: agreedPrice,
+            status: 'ASSIGNED',
             created_at: new Date().toISOString()
         };
 
         const requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
-        requests.unshift(req);
+        const existingIdx = requests.findIndex(r => r.enquiry_id === enquiry.id || (enquiry.enquiry_code && r.enquiry_code === enquiry.enquiry_code));
+        if (existingIdx >= 0) {
+            requests[existingIdx] = { ...requests[existingIdx], ...req };
+        } else {
+            requests.unshift(req);
+        }
         setLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, requests);
 
         try {
@@ -633,8 +667,25 @@ class KisanService {
             console.warn("Supabase transport request insert error:", e);
         }
 
-        // Auto-seed smart quotes from suitable transport providers
-        this.generateSmartInitialQuotes(req);
+        // Notify assigned driver
+        this.addNotification(
+            assignedDriver.phone,
+            'transporters',
+            '🚛 New Crop Load Assigned!',
+            `You have been assigned to pick up ${quantityTons} Tons of ${req.crop_name} from Farmer ${req.farmer_name}. Pickup: ${req.pickup_address}. Farmer: ${req.farmer_phone}.`,
+            'transport',
+            { transportCode, enquiryCode: req.enquiry_code }
+        );
+
+        // Notify farmer
+        this.addNotification(
+            enquiry.farmer_phone,
+            'farmers',
+            '🚚 Transporter Assigned for Your Harvest',
+            `Driver ${assignedDriver.name} (${assignedDriver.phone}, ${assignedDriver.vehicle_number}) has been assigned to pick up your harvest.`,
+            'transport',
+            { transportCode, enquiryCode: req.enquiry_code }
+        );
 
         this.notify('transport_request_created', req);
         return req;
@@ -688,11 +739,28 @@ class KisanService {
     }
 
     getTransportRequests({ farmerPhone, millId, providerPhone } = {}) {
-        const requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
+        let requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
+
+        // Auto-heal: Ensure all accepted enquiries with transport have an assigned transport request
+        const enquiries = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+        enquiries.forEach(enq => {
+            const statusUpper = (enq.status || '').toUpperCase();
+            const isAccepted = statusUpper === 'ACCEPTED' || statusUpper === 'LOAD_RECEIVED';
+            const hasTransport = enq.transport_required || enq.with_transport;
+            if (isAccepted && hasTransport) {
+                const enqCode = enq.enquiry_code || ('ENQ-' + (enq.id || '').replace(/-/g, '').slice(0, 8).toUpperCase());
+                const hasReq = requests.some(r => r.enquiry_id === enq.id || (r.enquiry_code && r.enquiry_code === enqCode));
+                if (!hasReq) {
+                    this.createTransportRequestFromEnquiry(enq);
+                }
+            }
+        });
+
+        requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
         return requests.filter(req => {
             if (farmerPhone && req.farmer_phone !== farmerPhone) return false;
             if (millId && String(req.mill_id) !== String(millId)) return false;
-            if (providerPhone && req.assigned_provider_id && req.assigned_provider_id !== providerPhone) return false;
+            if (providerPhone && req.assigned_provider_id && req.assigned_provider_id !== providerPhone && req.assigned_provider_phone !== providerPhone) return false;
             return true;
         });
     }
