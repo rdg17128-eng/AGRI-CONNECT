@@ -6,7 +6,6 @@ import LandingPage from './components/LandingPage';
 import FarmerPortal from './components/FarmerPortal';
 import BuyerPortal from './components/BuyerPortal';
 import TransportPortal from './components/TransportPortal';
-import ConsumerPortal from './components/ConsumerPortal';
 import RolePickerModal from './components/RolePickerModal';
 import './index.css';
 
@@ -49,12 +48,6 @@ function App() {
                 <TransportPortal />
               </ProtectedRoute>
             }
-          />
-
-          {/* Consumer Marketplace Portal */}
-          <Route
-            path="/consumer/*"
-            element={<ConsumerPortal />}
           />
 
           {/* Fallback to Home */}

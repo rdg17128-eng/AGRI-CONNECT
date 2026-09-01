@@ -4,8 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 import http from 'http'
 
 // Vite plugin: OAuth Port 3000 Redirect Bridge
-// Listens on port 3000 during dev. When Supabase defaults/redirects to localhost:3000,
-// this bridge catches the request and forwards the auth token to localhost:5173.
+// Listens on port 3000 across network interfaces (0.0.0.0). When redirected to port 3000,
+// this bridge catches the request and forwards to the exact device host on port 5173.
 function oauthBridgePlugin() {
   let bridgeServer = null;
   return {
@@ -20,7 +20,8 @@ function oauthBridgePlugin() {
     <meta charset="utf-8">
     <title>Redirecting to KisanConnect (Port 5173)...</title>
     <script>
-        var origin = localStorage.getItem('kisan_auth_origin') || 'http://localhost:5173';
+        var currentHost = window.location.hostname || 'localhost';
+        var origin = 'http://' + currentHost + ':5173';
         var target = origin + window.location.pathname + window.location.search + window.location.hash;
         window.location.replace(target);
     </script>
@@ -32,8 +33,8 @@ function oauthBridgePlugin() {
 </html>`);
         });
 
-        bridgeServer.listen(3000, () => {
-          console.log('\n  ➜  [KisanConnect OAuth Bridge] Listening on http://localhost:3000 -> Forwarding to http://localhost:5173\n');
+        bridgeServer.listen(3000, '0.0.0.0', () => {
+          console.log('\n  ➜  [KisanConnect OAuth Bridge] Listening on 0.0.0.0:3000 -> Forwarding to port 5173\n');
         });
 
         bridgeServer.on('error', (err) => {
@@ -55,4 +56,8 @@ function oauthBridgePlugin() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), oauthBridgePlugin()],
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+  },
 })

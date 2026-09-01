@@ -89,18 +89,6 @@ export function AuthProvider({ children }) {
                     console.warn("Transporters table lookup:", err);
                 }
             }
-
-            if (!userRole) {
-                try {
-                    const { data: consumer } = await supabase.from('consumers').select('*').eq('email', sbUser.email).maybeSingle();
-                    if (consumer) {
-                        userRole = 'consumers';
-                        profileData = consumer;
-                    }
-                } catch (err) {
-                    console.warn("Consumers table lookup:", err);
-                }
-            }
         }
 
         // 5. Final role resolution:

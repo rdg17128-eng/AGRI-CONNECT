@@ -16,9 +16,7 @@ export default function LandingPage() {
                 ? '/farmer/dashboard'
                 : role === 'buyers'
                 ? '/buyer/dashboard'
-                : role === 'transporters'
-                ? '/transport/dashboard'
-                : '/consumer/products';
+                : '/transport/dashboard';
             navigate(dest, { replace: true });
         }
     }, [user, role, navigate]);
@@ -60,9 +58,7 @@ export default function LandingPage() {
             ? '/farmer/dashboard'
             : authenticatedUser.role === 'buyers'
             ? '/buyer/dashboard'
-            : authenticatedUser.role === 'transporters'
-            ? '/transport/dashboard'
-            : '/consumer/products';
+            : '/transport/dashboard';
         navigate(dest);
     };
 

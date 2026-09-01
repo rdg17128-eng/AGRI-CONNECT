@@ -79,12 +79,6 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
     // Profile States
     const [profileName, setProfileName] = useState(user.name || '');
     const [profileAltPhone, setProfileAltPhone] = useState(user.altPhone || '');
-    const [isSavingProfile, setIsSavingProfile] = useState(false);
-
-    // Security States
-    const [newPhone, setNewPhone] = useState(user.phone || '');
-    const [newPin, setNewPin] = useState(user.pin || '');
-    const [isUpdatingSecurity, setIsUpdatingSecurity] = useState(false);
 
     // Data States
     const [crops, setCrops] = useState([]);
@@ -110,10 +104,6 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
     const [loadingEnquiries, setLoadingEnquiries] = useState(false);
     const [historyList, setHistoryList] = useState([]);
     const [historyFilter, setHistoryFilter] = useState('ALL');
-
-    // Orders State (legacy compatibility)
-    const [orders, setOrders] = useState([]);
-    const [expandedMapOrderId, setExpandedMapOrderId] = useState(null);
 
     // Watch for location changes and update weather
     useEffect(() => {
@@ -323,50 +313,6 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
         }
     };
 
-    const handleUpdateProfile = async () => {
-        setIsSavingProfile(true);
-        try {
-            const { error } = await supabase
-                .from(`${user.role}s`)
-                .update({ name: profileName, altPhone: profileAltPhone })
-                .eq('phone', user.phone);
-
-            if (error) throw error;
-            alert('Profile updated successfully!');
-        } catch (error) {
-            console.error(error);
-            alert('Failed to update profile');
-        } finally {
-            setIsSavingProfile(false);
-        }
-    };
-
-    const handleUpdateSecurity = async () => {
-        if (newPhone.length !== 10 || isNaN(newPhone)) {
-            return alert("Phone number must be exactly 10 digits.");
-        }
-        if (newPin.length < 4 || isNaN(newPin)) {
-            return alert("PIN must be 4 to 6 digits.");
-        }
-
-        setIsUpdatingSecurity(true);
-        try {
-            const { error } = await supabase
-                .from(`${user.role}s`)
-                .update({ phone: newPhone, pin: newPin })
-                .eq('phone', user.phone);
-
-            if (error) throw error;
-            alert("Security credentials updated! Please log in with your new phone.");
-            onLogout();
-        } catch (error) {
-            console.error(error);
-            alert("Error updating security settings");
-        } finally {
-            setIsUpdatingSecurity(false);
-        }
-    };
-
     const calculateDistance = (lat1, lon1, lat2, lon2) => {
         const R = 6371; // km
         const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -476,6 +422,10 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
             offers
         };
     }).filter(group => group.offers.length > 0);
+
+    const cropCountText = crops.length > 1 ? `${crops.length} Lots` : crops.length === 1 ? crops[0].cropName : '0 Lots';
+    const cropLocationText = crops.length > 1 ? `${crops[crops.length - 1].cropName} & more` : crops.length === 1 ? crops[0].locationName : 'Add crops to track';
+    const locationStatusClass = crops.length > 0 ? 'trend up' : 'trend neutral';
 
     return (
         <div className="app-container" style={{ display: 'flex' }}>
@@ -1837,7 +1787,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     mill={selectedMillForEnquiry}
                     crop={selectedCropForSearch}
                     user={user}
-                    onEnquiryCreated={(newEnquiry) => {
+                    onEnquiryCreated={() => {
                         fetchEnquiriesData();
                         setActiveTab('enquiries');
                     }}

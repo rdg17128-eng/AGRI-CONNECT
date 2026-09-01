@@ -60,6 +60,27 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* Universal Smooth Dark Scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(16, 185, 129, 0.3);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+}
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(16, 185, 129, 0.3) rgba(0, 0, 0, 0.2);
+}
+
 @keyframes auroraMesh {
     0% {
         background-position: 0% 0%
@@ -646,10 +667,24 @@ h6 {
 }
 
 /* Specific Cards */
-.market-prices,
-.weather-card,
-.upcoming-tasks {
+.weather-card {
     grid-column: span 4;
+}
+
+.market-prices {
+    grid-column: span 8;
+}
+
+.upcoming-tasks {
+    grid-column: span 12;
+}
+
+@media (max-width: 1024px) {
+    .weather-card,
+    .market-prices,
+    .upcoming-tasks {
+        grid-column: span 12;
+    }
 }
 
 .prices-list {
@@ -731,14 +766,18 @@ h6 {
 }
 
 .weather-card {
-    background: linear-gradient(135deg, #1e3a8a, #312e81);
+    background: linear-gradient(145deg, rgba(16, 185, 129, 0.16), rgba(6, 32, 20, 0.9)), var(--bg-card);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-color);
     position: relative;
     overflow: hidden;
-    color: white;
+    color: var(--text-main);
+    box-shadow: var(--shadow-md);
 }
 
 .weather-card .card-header h3 {
-    color: white;
+    color: var(--text-main);
 }
 
 .weather-card::after {

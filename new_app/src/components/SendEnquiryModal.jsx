@@ -4,6 +4,7 @@ import KisanLogo from './KisanLogo';
 
 export default function SendEnquiryModal({ onClose, mill, crop, user, onEnquiryCreated }) {
     const [acres, setAcres] = useState(crop?.acres || '5');
+    const [quantityTons, setQuantityTons] = useState(crop?.quantity || String(Number(crop?.acres || 5) * 2));
     const defaultPrice = (mill?.prices && crop?.cropName && mill.prices[crop.cropName])
         ? String(mill.prices[crop.cropName])
         : '2450';
@@ -305,6 +306,17 @@ export default function SendEnquiryModal({ onClose, mill, crop, user, onEnquiryC
                                             value={pickupLocation}
                                             onChange={(e) => setPickupLocation(e.target.value)}
                                             placeholder="Enter farm land location or landmark"
+                                            style={{ width: '100%', padding: '0.7rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Mill Delivery Gate / Unloading Address</label>
+                                        <input
+                                            type="text"
+                                            value={deliveryLocation}
+                                            onChange={(e) => setDeliveryLocation(e.target.value)}
+                                            placeholder="Mill destination gate"
                                             style={{ width: '100%', padding: '0.7rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
                                         />
                                     </div>

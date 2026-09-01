@@ -15,6 +15,33 @@ export default function QrScannerModal({ loggedInMill, onClose, onVerificationSu
     const scannerRef = useRef(null);
     const qrRegionId = "kisan-qr-reader-viewport";
 
+    const stopCamera = async () => {
+        if (scannerRef.current) {
+            try {
+                await scannerRef.current.stop();
+                scannerRef.current.clear();
+            } catch (err) {
+                console.debug("Camera stop notice:", err);
+            }
+        }
+    };
+
+    const handleQrDetected = async (code) => {
+        await stopCamera();
+        setScanState('verifying');
+        setScanError(null);
+
+        try {
+            const result = await kisanService.verifyScannedQr(code, loggedInMill);
+            setVerificationResult(result);
+            setScanState('result');
+        } catch (err) {
+            console.error("Verification error:", err);
+            setScanError("Failed to verify QR with database. Please try again.");
+            setScanState('scanning');
+        }
+    };
+
     useEffect(() => {
         let html5QrCode = null;
 
@@ -35,7 +62,7 @@ export default function QrScannerModal({ loggedInMill, onClose, onVerificationSu
                     (decodedText) => {
                         handleQrDetected(decodedText);
                     },
-                    (errorMessage) => {
+                    () => {
                         // Suppress background frame parsing errors
                     }
                 );
@@ -53,37 +80,12 @@ export default function QrScannerModal({ loggedInMill, onClose, onVerificationSu
             if (scannerRef.current) {
                 try {
                     scannerRef.current.stop().then(() => scannerRef.current.clear()).catch(() => {});
-                } catch (e) {
-                    // Ignore cleanup error
+                } catch (err) {
+                    console.debug("Cleanup notice:", err);
                 }
             }
         };
     }, [scanState]);
-
-    const stopCamera = async () => {
-        if (scannerRef.current) {
-            try {
-                await scannerRef.current.stop();
-                scannerRef.current.clear();
-            } catch (e) {}
-        }
-    };
-
-    const handleQrDetected = async (code) => {
-        await stopCamera();
-        setScanState('verifying');
-        setScanError(null);
-
-        try {
-            const result = await kisanService.verifyScannedQr(code, loggedInMill);
-            setVerificationResult(result);
-            setScanState('result');
-        } catch (e) {
-            console.error("Verification error:", e);
-            setScanError("Failed to verify QR with database. Please try again.");
-            setScanState('scanning');
-        }
-    };
 
     const handleManualSubmit = (e) => {
         e.preventDefault();

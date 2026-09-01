@@ -205,7 +205,6 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
 
     const handleAcceptEnquiry = async (enquiry) => {
         const targetId = enquiry.id || enquiry.enquiry_code;
-        if (!window.confirm(`Accept enquiry ${enquiry.enquiry_code || targetId} from ${enquiry.farmer_name}?`)) return;
 
         try {
             // Optimistically update local state immediately so user sees the change with 0 delay!
@@ -733,10 +732,9 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                                             <button 
                                                                 className="primary-btn" 
                                                                 onClick={async () => {
-                                                                    if (window.confirm(`Confirm gate receipt of ${enq.crop_name} (${enq.quantity || (enq.acres * 2)} Tons) from Farmer ${enq.farmer_name}?`)) {
-                                                                        await kisanService.acceptLoad(enq.enquiry_code || enq.id, loggedInMill);
-                                                                        fetchData();
-                                                                    }
+                                                                    const targetMill = mills.find(m => m.id === enq.mill_id) || activeMill;
+                                                                    await kisanService.acceptLoad(enq.enquiry_code || enq.id, targetMill);
+                                                                    await refreshAllData();
                                                                 }}
                                                                 style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem' }}
                                                             >

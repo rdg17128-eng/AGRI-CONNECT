@@ -35,14 +35,6 @@ export default function RolePickerModal() {
             title: 'Transport Provider',
             subtitle: 'Smart Agro-Logistics',
             desc: 'Match vehicle capacity with farmer haulage requests, quote bids, and haul produce.'
-        },
-        {
-            id: 'consumers',
-            route: '/consumer/products',
-            icon: 'fa-basket-shopping',
-            title: 'Consumer',
-            subtitle: 'Farm-Fresh Produce',
-            desc: 'Direct purchasing of farm-fresh grains, certified pulses, and local produce.'
         }
     ];
 

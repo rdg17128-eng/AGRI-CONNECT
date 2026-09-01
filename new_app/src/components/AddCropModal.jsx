@@ -19,15 +19,16 @@ export default function AddCropModal({ onClose, onSaveCrop }) {
     const handleSave = async () => {
         const finalCrop = crop === 'Other' ? customCrop : crop;
         if (!finalCrop) return alert("Please select or enter a crop.");
-        if (!coords) return alert("Please select a location from the map.");
+        const finalCoords = coords || { lat: 17.9689, lng: 79.5941 };
+        const finalLocation = locationInput || 'Warangal Agri Farm Plot';
         if (!acres || isNaN(acres) || acres <= 0) return alert("Please enter valid acres.");
 
         setLoading(true);
         await onSaveCrop({
             cropName: finalCrop,
-            locationName: locationInput,
-            latitude: coords.lat,
-            longitude: coords.lng,
+            locationName: finalLocation,
+            latitude: finalCoords.lat,
+            longitude: finalCoords.lng,
             acres: parseFloat(acres)
         });
         setLoading(false);

@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd new_app && npm install && npm run build",
+  "outputDirectory": "new_app/dist",
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -30,7 +30,6 @@ export default function FarmerProfileView({
     const [pin, setPin] = useState(user.pin || '');
     const [confirmPin, setConfirmPin] = useState('');
     const [showPin, setShowPin] = useState(false);
-    const [newPhone, setNewPhone] = useState(user.phone || '');
 
     // Preferences & Alerts
     const [priceAlerts, setPriceAlerts] = useState(true);

@@ -44,7 +44,7 @@ export default function ProtectedRoute({ requiredRole, children }) {
             ? '/buyer/dashboard'
             : role === 'transporters'
             ? '/transport/dashboard'
-            : '/consumer/products';
+            : '/';
         return <Navigate to={defaultRoute} replace />;
     }
 

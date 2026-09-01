@@ -630,6 +630,7 @@ class KisanService {
             let query = supabase.from('loads').select('*').order('received_at', { ascending: false });
             if (millId) query = query.eq('mill_id', String(millId));
             if (farmerPhone) query = query.eq('farmer_id', farmerPhone);
+            if (buyerPhone) query = query.eq('buyer_phone', buyerPhone);
             const { data, error } = await query;
             if (!error && data && data.length > 0) loads = data;
         } catch (e) {
@@ -899,11 +900,12 @@ class KisanService {
             setLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, updatedReqs);
 
             // Notify transport provider
+            const acceptorTitle = acceptedByRole === 'farmers' ? 'Farmer' : 'Buyer/Mill';
             this.addNotification(
                 selectedQuote.provider_phone,
                 'transporters',
-                'Quote Accepted!',
-                `Congratulations! Your quote of ₹${selectedQuote.price} for request ${selectedQuote.transport_code} has been accepted. Prepare for pickup!`,
+                `Quote Accepted by ${acceptorTitle}!`,
+                `Congratulations! Your quote of ₹${selectedQuote.price} for request ${selectedQuote.transport_code} was accepted by the ${acceptorTitle.toLowerCase()}. Prepare for pickup!`,
                 'success',
                 { transportCode: selectedQuote.transport_code }
             );
@@ -1149,9 +1151,17 @@ class KisanService {
         const quotes = getLocal(STORAGE_KEYS.TRANSPORT_QUOTES, []);
 
         const myQuotes = quotes.filter(q => q.provider_phone === providerPhone || !providerPhone);
+        const myQuoteCodes = new Set(myQuotes.map(q => q.transport_code));
         const history = [];
 
-        requests.forEach(tr => {
+        const relevantRequests = requests.filter(tr => 
+            !providerPhone || 
+            tr.assigned_provider_id === providerPhone || 
+            tr.assigned_provider_phone === providerPhone ||
+            myQuoteCodes.has(tr.transport_code)
+        );
+
+        relevantRequests.forEach(tr => {
             history.push({
                 id: 'HIST-TRIP-' + tr.transport_code,
                 transport_code: tr.transport_code,
