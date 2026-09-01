@@ -1300,12 +1300,14 @@ h6 {
 .landing-page {
     position: relative;
     min-height: 100vh;
+    width: 100%;
     background: radial-gradient(circle at center, #0f2d1a 0%, #050a07 100%);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     overflow-x: hidden;
-    padding: 3rem 1rem;
+    padding: 2rem 1rem;
 }
 
 .agri-landscape {
@@ -1332,6 +1334,12 @@ h6 {
     z-index: 1;
     opacity: 0.2;
     color: var(--primary);
+}
+
+@media (max-width: 1024px) {
+    .plant-border {
+        display: none !important;
+    }
 }
 
 .plant-border.left {
@@ -1566,31 +1574,32 @@ h6 {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
+    width: 100vw;
     height: 100vh;
-    background: rgba(4, 9, 6, 0.85);
-    /* Deepest forest overlay */
+    background: rgba(2, 6, 4, 0.94);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 2000;
+    padding: 1rem;
     animation: fadeIn 0.3s ease-out;
 }
 
 .auth-content {
-    background: rgba(8, 20, 15, 0.7);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--border-highlight);
-    border-radius: 3rem;
-    padding: 2.5rem 2rem;
+    background: #0d1712 !important;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    border-radius: 1.5rem;
+    padding: 2rem 1.5rem;
     width: 100%;
-    max-width: 480px;
+    max-width: 440px;
+    max-height: 90vh;
+    overflow-y: auto;
     position: relative;
-    box-shadow: 0 50px 100px rgba(0, 0, 0, 0.8), inset 0 1px 2px rgba(255, 255, 255, 0.1);
-    animation: growIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.95);
+    animation: growIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    color: #f0fdf4;
 }
 
 .close-btn {
