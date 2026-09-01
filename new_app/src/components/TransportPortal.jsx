@@ -265,7 +265,7 @@ export default function TransportPortal({ user: propUser, onLogout }) {
                         <i className="fa-solid fa-clipboard-list"></i>
                         <span>Available Requests</span>
                         {suitableRequests.length > 0 && (
-                            <span className="badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
+                            <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
                                 {suitableRequests.length}
                             </span>
                         )}
@@ -274,7 +274,7 @@ export default function TransportPortal({ user: propUser, onLogout }) {
                         <i className="fa-solid fa-route"></i>
                         <span>Active Deliveries</span>
                         {activeTrips.length > 0 && (
-                            <span className="badge" style={{ marginLeft: 'auto', background: 'var(--accent-gold)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
+                            <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--accent-gold)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
                                 {activeTrips.length}
                             </span>
                         )}

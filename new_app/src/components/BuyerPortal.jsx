@@ -315,7 +315,7 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                         <i className="fa-solid fa-inbox"></i>
                         <span>Farmer Enquiries</span>
                         {enquiries.filter(e => (e.status || '').toUpperCase() === 'PENDING').length > 0 && (
-                            <span className="badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
+                            <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
                                 {enquiries.filter(e => (e.status || '').toUpperCase() === 'PENDING').length}
                             </span>
                         )}
@@ -328,7 +328,7 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                         <i className="fa-solid fa-truck-ramp-box"></i>
                         <span>Loads Received</span>
                         {loadsReceived.length > 0 && (
-                            <span className="badge" style={{ marginLeft: 'auto', background: 'var(--accent-gold)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
+                            <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--accent-gold)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
                                 {loadsReceived.length}
                             </span>
                         )}

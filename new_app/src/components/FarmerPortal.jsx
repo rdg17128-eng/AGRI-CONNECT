@@ -426,7 +426,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                         <i className="fa-solid fa-paper-plane"></i>
                         <span>My Enquiries</span>
                         {enquiries.length > 0 && (
-                            <span className="badge" style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem' }}>
+                            <span className="nav-badge" style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem' }}>
                                 {enquiries.length}
                             </span>
                         )}
@@ -435,7 +435,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                         <i className="fa-solid fa-qrcode" style={{ color: 'var(--primary)' }}></i>
                         <span style={{ color: 'var(--primary)', fontWeight: 700 }}>My QR Codes</span>
                         {acceptedEnquiries.length > 0 && (
-                            <span className="badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
+                            <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
                                 {acceptedEnquiries.length}
                             </span>
                         )}
