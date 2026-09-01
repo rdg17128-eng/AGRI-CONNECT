@@ -7,12 +7,14 @@ import FarmerPortal from './components/FarmerPortal';
 import BuyerPortal from './components/BuyerPortal';
 import TransportPortal from './components/TransportPortal';
 import RolePickerModal from './components/RolePickerModal';
+import ErrorBoundary from './components/ErrorBoundary';
 import './index.css';
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           {/* Public Landing & Portal Selection */}
           <Route path="/" element={<LandingPage />} />
@@ -55,6 +57,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

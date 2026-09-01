@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
 
 const AuthContext = createContext(null);
@@ -182,7 +182,7 @@ export function AuthProvider({ children }) {
 
     // Trigger Supabase Google OAuth
     // Stores the selected portal role so that returning users go straight to that portal
-    const signInWithGoogle = async (intendedRole = null) => {
+    const signInWithGoogle = useCallback(async (intendedRole = null) => {
         try {
             if (intendedRole) {
                 localStorage.setItem('kisan_intended_role', intendedRole);
@@ -204,13 +204,13 @@ export function AuthProvider({ children }) {
             console.error("Google sign-in error:", err);
             throw new Error("Google sign-in failed. Please try again.");
         }
-    };
+    }, []);
 
     // Assign Role to New Google User (if needed)
-    const assignRoleToGoogleUser = async (selectedRole, extraData = {}) => {
+    const assignRoleToGoogleUser = useCallback(async (selectedRole, extraData = {}) => {
         const activeUser = googleUser || session?.user;
         if (!activeUser) {
-            throw new Error("No active Google session found.");
+            return;
         }
 
         try {
@@ -258,16 +258,16 @@ export function AuthProvider({ children }) {
             console.error("Role assignment error:", err);
             throw new Error("Failed to assign role. Please try again.");
         }
-    };
+    }, [googleUser, session]);
 
     // Phone / PIN Login
-    const loginWithPhone = (userData, userRole) => {
+    const loginWithPhone = useCallback((userData, userRole) => {
         setUser(userData);
         setRole(userRole);
-    };
+    }, []);
 
     // Explicit Logout
-    const logout = async () => {
+    const logout = useCallback(async () => {
         try {
             await supabase.auth.signOut();
         } catch (e) {
@@ -280,7 +280,7 @@ export function AuthProvider({ children }) {
         localStorage.removeItem('kisan_active_tab');
         localStorage.removeItem('agri_active_tab');
         localStorage.removeItem('kisan_intended_role');
-    };
+    }, []);
 
     return (
         <AuthContext.Provider value={{
