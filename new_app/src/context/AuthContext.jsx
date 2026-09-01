@@ -21,11 +21,40 @@ export function AuthProvider({ children }) {
             return;
         }
 
-        // 1. Check if role is stored in Supabase Auth user_metadata
-        let userRole = sbUser.user_metadata?.role || null;
+        // 1. Check if user clicked a specific portal before OAuth
+        // If the user picked a specific portal (e.g. Farmer, Mill, Transporter),
+        // immediately prioritize that portal without asking for role selection!
+        const intendedRole = localStorage.getItem('kisan_intended_role');
+        let userRole = null;
         let profileData = null;
 
-        // 2. If not in user_metadata, check profile tables in Supabase by email
+        if (intendedRole) {
+            userRole = intendedRole;
+            localStorage.removeItem('kisan_intended_role');
+            try {
+                await supabase.auth.updateUser({ data: { role: intendedRole } });
+            } catch (uErr) {
+                console.warn("Error updating user role metadata:", uErr);
+            }
+        } else {
+            // 2. Check if role is stored in Supabase Auth user_metadata
+            userRole = sbUser.user_metadata?.role || null;
+        }
+
+        // 3. Look up existing profile in the role table
+        const targetTable = userRole === 'transporters' ? 'transport_providers' : (userRole || 'farmers');
+        if (userRole && sbUser.email) {
+            try {
+                const { data } = await supabase.from(targetTable).select('*').eq('email', sbUser.email).maybeSingle();
+                if (data) {
+                    profileData = data;
+                }
+            } catch (tErr) {
+                console.warn(`Profile lookup in ${targetTable}:`, tErr);
+            }
+        }
+
+        // 4. If no role was pre-selected or in metadata, check all tables by email
         if (!userRole && sbUser.email) {
             try {
                 const { data: farmer } = await supabase.from('farmers').select('*').eq('email', sbUser.email).maybeSingle();
@@ -74,37 +103,41 @@ export function AuthProvider({ children }) {
             }
         }
 
-        // 3. If still no role, check if user clicked a specific portal before OAuth
-        if (!userRole) {
-            const intendedRole = localStorage.getItem('kisan_intended_role');
-            if (intendedRole) {
-                localStorage.removeItem('kisan_intended_role');
-                userRole = intendedRole;
-                try {
-                    await supabase.auth.updateUser({ data: { role: intendedRole } });
-                } catch (uErr) {
-                    console.warn("Error updating user role metadata:", uErr);
-                }
-            }
-        }
-
-        // 4. Role found: create final user object and navigate to portal
+        // 5. Final role resolution:
         if (userRole) {
             const finalUser = {
                 id: sbUser.id,
                 email: sbUser.email,
-                name: sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Kisan User',
+                name: sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Kisan Member',
                 phone: sbUser.phone || sbUser.user_metadata?.phone || '',
                 role: userRole,
                 avatar: sbUser.user_metadata?.avatar_url || null,
                 ...profileData
             };
+
+            // If new user profile in database table is missing, auto-create it
+            if (!profileData && sbUser.email) {
+                try {
+                    const newProfile = {
+                        email: sbUser.email,
+                        phone: finalUser.phone || '9' + Math.floor(100000000 + Math.random() * 900000000),
+                        pin: '1234',
+                        name: finalUser.name,
+                        role: userRole,
+                        created_at: new Date().toISOString()
+                    };
+                    await supabase.from(targetTable).upsert(newProfile);
+                } catch (insErr) {
+                    console.warn(`Auto-creating initial profile in ${targetTable}:`, insErr);
+                }
+            }
+
             setUser(finalUser);
             setRole(userRole);
             setNeedsRoleSelection(false);
             setGoogleUser(null);
         } else {
-            // New Google account without an assigned role -> trigger RolePickerModal
+            // Only if absolutely no role could be inferred, show role selection
             setGoogleUser(sbUser);
             setNeedsRoleSelection(true);
         }
@@ -140,6 +173,7 @@ export function AuthProvider({ children }) {
                 setGoogleUser(null);
                 localStorage.removeItem('kisan_active_tab');
                 localStorage.removeItem('agri_active_tab');
+                localStorage.removeItem('kisan_intended_role');
             }
         });
 
@@ -149,7 +183,7 @@ export function AuthProvider({ children }) {
     }, []);
 
     // Trigger Supabase Google OAuth
-    // Always uses window.location.origin to support both local (http://localhost:5173) and production Vercel
+    // Stores the selected portal role so that returning users go straight to that portal
     const signInWithGoogle = async (intendedRole = null) => {
         try {
             if (intendedRole) {
@@ -171,7 +205,7 @@ export function AuthProvider({ children }) {
         }
     };
 
-    // Assign Role to New Google User
+    // Assign Role to New Google User (if needed)
     const assignRoleToGoogleUser = async (selectedRole, extraData = {}) => {
         const activeUser = googleUser || session?.user;
         if (!activeUser) {

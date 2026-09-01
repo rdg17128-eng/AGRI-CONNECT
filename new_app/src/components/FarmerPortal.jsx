@@ -8,6 +8,7 @@ import AddCropModal from './AddCropModal';
 import SendEnquiryModal from './SendEnquiryModal';
 import QrCodeModal from './QrCodeModal';
 import KisanLogo from './KisanLogo';
+import FarmerProfileView from './FarmerProfileView';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -503,7 +504,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                             <div>{currentTime.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</div>
                         </div>
 
-                        <div className="user-profile">
+                        <div className="user-profile" onClick={() => setActiveTab('profile')} style={{ cursor: 'pointer' }} title="View Farmer Profile">
                             <div className="profile-img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', color: 'var(--primary)', fontSize: '1.5rem', width: '42px', height: '42px', borderRadius: '50%' }}>
                                 <i className="fa-solid fa-user"></i>
                             </div>
@@ -1312,51 +1313,16 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     {/* TAB: PROFILE */}
                     {/* ======================================================== */}
                     {activeTab === 'profile' && (
-                        <div className="bento-card" style={{ maxWidth: '600px', margin: '0 auto' }}>
-                            <h3 style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-                                Farmer Profile Settings
-                            </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Full Name</label>
-                                    <input 
-                                        type="text" 
-                                        value={profileName} 
-                                        onChange={e => setProfileName(e.target.value)}
-                                        style={{ width: '100%', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Alternate Phone</label>
-                                    <input 
-                                        type="tel" 
-                                        value={profileAltPhone} 
-                                        onChange={e => setProfileAltPhone(e.target.value)}
-                                        style={{ width: '100%', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
-                                    />
-                                </div>
-                                <button className="primary-btn" onClick={handleUpdateProfile} disabled={isSavingProfile} style={{ justifyContent: 'center' }}>
-                                    {isSavingProfile ? 'Saving...' : 'Save Profile Changes'}
-                                </button>
-
-                                <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
-                                    <h4 style={{ margin: '0 0 1rem 0' }}>Security PIN</h4>
-                                    <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                        <input 
-                                            type="password"
-                                            value={newPin}
-                                            onChange={e => setNewPin(e.target.value)}
-                                            placeholder="Enter new 4-6 digit PIN"
-                                            maxLength="6"
-                                            style={{ flex: 1, padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'inherit' }}
-                                        />
-                                        <button className="primary-btn" onClick={handleUpdateSecurity} disabled={isUpdatingSecurity}>
-                                            Update PIN
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <FarmerProfileView 
+                            user={{ ...user, name: profileName || user.name, altPhone: profileAltPhone || user.altPhone }}
+                            crops={crops}
+                            enquiries={enquiries}
+                            onProfileUpdated={(updated) => {
+                                if (updated.name) setProfileName(updated.name);
+                                if (updated.altPhone) setProfileAltPhone(updated.altPhone);
+                            }}
+                            onLogout={handleLogout}
+                        />
                     )}
 
                 </div>
