@@ -192,7 +192,7 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
     };
 
     const handleAcceptEnquiry = async (enquiry) => {
-        if (!window.confirm(`Accept enquiry ${enquiry.enquiry_code} from ${enquiry.farmer_name}? A secure verification QR will be generated automatically.`)) return;
+        if (!window.confirm(`Accept enquiry ${enquiry.enquiry_code} from ${enquiry.farmer_name}?`)) return;
 
         try {
             const accepted = await kisanService.acceptEnquiry(enquiry.enquiry_code || enquiry.id, {
@@ -203,9 +203,8 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
             });
 
             if (accepted) {
-                // Instantly open QR Code Modal for viewing, sharing, or downloading
-                setSelectedEnquiryForQr(accepted);
-                refreshAllData();
+                await refreshAllData();
+                setEnquiryFilter('ACCEPTED');
             }
         } catch (error) {
             console.error("Error accepting enquiry:", error);
@@ -266,7 +265,7 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
 
     const filteredEnquiries = enquiries.filter(eq => {
         if (enquiryFilter === 'ALL') return true;
-        return eq.status === enquiryFilter;
+        return (eq.status || '').toUpperCase() === enquiryFilter.toUpperCase();
     });
 
     const activeMill = mills[0] || {
@@ -293,9 +292,9 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                     <a className={`nav-item ${activeTab === 'enquiries' ? 'active' : ''}`} onClick={() => { setActiveTab('enquiries'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-inbox"></i>
                         <span>Farmer Enquiries</span>
-                        {enquiries.filter(e => e.status === 'PENDING').length > 0 && (
+                        {enquiries.filter(e => (e.status || '').toUpperCase() === 'PENDING').length > 0 && (
                             <span className="badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
-                                {enquiries.filter(e => e.status === 'PENDING').length}
+                                {enquiries.filter(e => (e.status || '').toUpperCase() === 'PENDING').length}
                             </span>
                         )}
                     </a>
@@ -575,13 +574,15 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                                 </div>
 
                                                 <span className="status-badge" style={{
-                                                    background: enq.status === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : enq.status === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
-                                                    color: enq.status === 'ACCEPTED' ? 'var(--primary)' : enq.status === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24',
+                                                    background: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'rgba(16, 185, 129, 0.15)' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                                                    color: (enq.status || '').toUpperCase() === 'ACCEPTED' ? 'var(--primary)' : (enq.status || '').toUpperCase() === 'LOAD_RECEIVED' ? '#38bdf8' : '#fbbf24',
                                                     padding: '0.25rem 0.65rem',
                                                     fontSize: '0.75rem',
-                                                    fontWeight: 700
+                                                    fontWeight: 700,
+                                                    borderRadius: '0.5rem',
+                                                    textTransform: 'uppercase'
                                                 }}>
-                                                    {enq.status}
+                                                    {(enq.status || 'PENDING').toUpperCase()}
                                                 </span>
                                             </div>
 
@@ -605,7 +606,7 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                                 </div>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                     <span style={{ color: 'var(--text-muted)' }}>Distance:</span>
-                                                    <span>~{enq.distance || 35} km</span>
+                                                    <span>~{Number(enq.distance || 35).toFixed(1)} km</span>
                                                 </div>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                     <span style={{ color: 'var(--text-muted)' }}>Offered Price:</span>
@@ -627,13 +628,14 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
 
                                             {/* Footer Actions */}
                                             <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '0.6rem' }}>
-                                                {enq.status === 'PENDING' ? (
+                                                {(enq.status || '').toUpperCase() === 'PENDING' ? (
                                                     <>
                                                         <button 
                                                             className="text-btn" 
                                                             onClick={() => handleRejectEnquiry(enq)}
                                                             style={{ flex: 1, justifyContent: 'center', padding: '0.65rem', color: 'var(--danger)' }}
                                                         >
+                                                            <i className="fa-solid fa-xmark" style={{ marginRight: '0.35rem' }}></i>
                                                             Reject
                                                         </button>
                                                         <button 
@@ -642,18 +644,28 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                                             style={{ flex: 1.5, justifyContent: 'center', padding: '0.65rem' }}
                                                         >
                                                             <i className="fa-solid fa-circle-check"></i>
-                                                            Accept & QR
+                                                            Accept Enquiry
                                                         </button>
                                                     </>
+                                                ) : (enq.status || '').toUpperCase() === 'ACCEPTED' ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 600 }}>
+                                                            <i className="fa-solid fa-circle-check"></i>
+                                                            <span>Accepted • Ready for Gate Delivery</span>
+                                                        </div>
+                                                        <button 
+                                                            className="primary-btn" 
+                                                            onClick={() => setIsQrScannerOpen(true)}
+                                                            style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem', background: 'rgba(16, 185, 129, 0.2)', color: 'var(--primary-light)', border: '1px solid var(--primary)' }}
+                                                        >
+                                                            <i className="fa-solid fa-qrcode"></i>
+                                                            Scan QR on Arrival
+                                                        </button>
+                                                    </div>
                                                 ) : (
-                                                    <button 
-                                                        className="primary-btn" 
-                                                        onClick={() => setSelectedEnquiryForQr(enq)}
-                                                        style={{ width: '100%', justifyContent: 'center', padding: '0.65rem', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', border: '1px solid var(--primary)' }}
-                                                    >
-                                                        <i className="fa-solid fa-qrcode"></i>
-                                                        View Verification QR
-                                                    </button>
+                                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', width: '100%', textAlign: 'center', padding: '0.35rem 0' }}>
+                                                        Status: <strong style={{ color: 'var(--text-main)' }}>{(enq.status || '').toUpperCase()}</strong>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
