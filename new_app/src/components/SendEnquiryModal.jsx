@@ -4,8 +4,10 @@ import KisanLogo from './KisanLogo';
 
 export default function SendEnquiryModal({ onClose, mill, crop, user, onEnquiryCreated }) {
     const [acres, setAcres] = useState(crop?.acres || '5');
-    const [quantityTons, setQuantityTons] = useState(crop?.acres ? `${crop.acres * 2}` : '10');
-    const [expectedPrice, setExpectedPrice] = useState('2450');
+    const defaultPrice = (mill?.prices && crop?.cropName && mill.prices[crop.cropName])
+        ? String(mill.prices[crop.cropName])
+        : '2450';
+    const [expectedPrice, setExpectedPrice] = useState(defaultPrice);
     const [withTransport, setWithTransport] = useState(false);
     
     // Transport specific details

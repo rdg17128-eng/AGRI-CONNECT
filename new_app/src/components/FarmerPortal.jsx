@@ -98,6 +98,11 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
     const [selectedCropForSearch, setSelectedCropForSearch] = useState(null);
     const [selectedMillForEnquiry, setSelectedMillForEnquiry] = useState(null);
 
+    // All Verified Mills & Price Comparison
+    const [allVerifiedMills, setAllVerifiedMills] = useState([]);
+    const [selectedRateCrop, setSelectedRateCrop] = useState('ALL');
+    const [marketRateMode, setMarketRateMode] = useState('MILL_RATES'); // 'MILL_RATES' or 'APMC'
+
     // Enquiry, QR, Transport & History States
     const [enquiries, setEnquiries] = useState([]);
     const [transportRequests, setTransportRequests] = useState([]);
@@ -218,13 +223,44 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
         }
     };
 
+    const fetchAllVerifiedMills = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('mills')
+                .select('*')
+                .eq('status', 'verified');
+            if (!error && data) {
+                const mapped = data.map(m => ({
+                    id: m.id,
+                    ownerPhone: m.owner_phone,
+                    millName: m.mill_name,
+                    millType: m.mill_type,
+                    capacity: m.capacity,
+                    requirements: m.requirements,
+                    selectedCrops: m.selectedCrops || [],
+                    locationName: m.location_name,
+                    latitude: m.latitude,
+                    longitude: m.longitude,
+                    hasColdStorage: m.has_cold_storage,
+                    prices: m.prices || {},
+                    status: m.status
+                }));
+                setAllVerifiedMills(mapped);
+            }
+        } catch (err) {
+            console.error("Error fetching verified mills:", err);
+        }
+    };
+
     useEffect(() => {
         fetchCrops();
         fetchOrders();
         fetchEnquiriesData();
+        fetchAllVerifiedMills();
 
         const unsub = kisanService.subscribe(() => {
             fetchEnquiriesData();
+            fetchAllVerifiedMills();
         });
 
         return () => unsub();
@@ -396,9 +432,50 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
         return s === 'ACCEPTED' || s === 'LOAD_RECEIVED';
     });
 
-    const cropCountText = crops.length > 1 ? `${crops.length} Lots` : crops.length === 1 ? crops[0].cropName : '0 Lots';
-    const cropLocationText = crops.length > 1 ? `${crops[crops.length - 1].cropName} & more` : crops.length === 1 ? crops[0].locationName : 'Add crops to track';
-    const locationStatusClass = crops.length > 0 ? 'trend up' : 'trend neutral';
+    // Calculate mill rates suitable for farmer crops, sorted with highest price first
+    const farmerCropNames = Array.from(new Set(crops.map(c => c.cropName).filter(Boolean)));
+    const targetCropsForRates = (farmerCropNames.length > 0)
+        ? (selectedRateCrop === 'ALL' ? farmerCropNames : [selectedRateCrop])
+        : (selectedRateCrop === 'ALL' ? ['Paddy (Rice)', 'Maize', 'Cotton', 'Red Gram'] : [selectedRateCrop]);
+
+    const millOffersByCrop = targetCropsForRates.map(cropName => {
+        const farmerCropObj = crops.find(c => c.cropName === cropName);
+        const suitableMills = allVerifiedMills.filter(m => 
+            Array.isArray(m.selectedCrops) && m.selectedCrops.includes(cropName)
+        );
+
+        const offers = suitableMills.map(mill => {
+            const rawPrice = mill.prices?.[cropName];
+            const price = Number(rawPrice) || (
+                cropName === 'Paddy (Rice)' ? 2450 :
+                cropName === 'Cotton' ? 7100 :
+                cropName === 'Maize' ? 2100 :
+                cropName === 'Red Gram' ? 6800 : 2500
+            );
+            const dist = (farmerCropObj?.latitude && mill.latitude)
+                ? calculateDistance(farmerCropObj.latitude, farmerCropObj.longitude, mill.latitude, mill.longitude)
+                : 38.5;
+
+            return {
+                mill,
+                cropName,
+                price,
+                isCustomRate: Boolean(rawPrice),
+                distance: dist,
+                farmerCrop: farmerCropObj || { cropName }
+            };
+        });
+
+        // Sort HIGHEST PRICE FIRST!
+        offers.sort((a, b) => b.price - a.price);
+
+        return {
+            cropName,
+            farmerCrop: farmerCropObj,
+            highestPrice: offers[0]?.price || 0,
+            offers
+        };
+    }).filter(group => group.offers.length > 0);
 
     return (
         <div className="app-container" style={{ display: 'flex' }}>
@@ -617,34 +694,242 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                     </div>
                                 </div>
 
-                                <div className="bento-card market-prices">
-                                    <div className="card-header">
-                                        <h3>Live Market Rates</h3>
-                                        <button className="text-btn" onClick={() => setActiveTab('market')}>View All</button>
+                                <div className="bento-card market-prices" style={{ display: 'flex', flexDirection: 'column' }}>
+                                    {/* Card Header with Mode Toggle and View All */}
+                                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <h3 style={{ margin: 0, fontSize: '1.2rem' }}>Live Mill Buying Rates 💰</h3>
+                                                <span className="status-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', fontSize: '0.7rem', padding: '0.15rem 0.5rem', fontWeight: 800 }}>
+                                                    HIGHEST PRICES
+                                                </span>
+                                            </div>
+                                            <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', margin: '0.2rem 0 0 0' }}>
+                                                {farmerCropNames.length > 0 ? 'Mills matched to your crops, ranked by highest offer' : 'Verified mill prices ranked by highest rate'}
+                                            </p>
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.06)', borderRadius: '0.5rem', padding: '0.15rem' }}>
+                                                <button 
+                                                    onClick={() => setMarketRateMode('MILL_RATES')}
+                                                    style={{ 
+                                                        background: marketRateMode === 'MILL_RATES' ? 'var(--primary)' : 'transparent', 
+                                                        color: marketRateMode === 'MILL_RATES' ? '#000' : 'var(--text-muted)',
+                                                        border: 'none', 
+                                                        padding: '0.3rem 0.65rem', 
+                                                        borderRadius: '0.4rem', 
+                                                        fontSize: '0.75rem', 
+                                                        fontWeight: 700, 
+                                                        cursor: 'pointer' 
+                                                    }}
+                                                >
+                                                    <i className="fa-solid fa-industry"></i> Mill Rates
+                                                </button>
+                                                <button 
+                                                    onClick={() => setMarketRateMode('APMC')}
+                                                    style={{ 
+                                                        background: marketRateMode === 'APMC' ? 'var(--primary)' : 'transparent', 
+                                                        color: marketRateMode === 'APMC' ? '#000' : 'var(--text-muted)',
+                                                        border: 'none', 
+                                                        padding: '0.3rem 0.65rem', 
+                                                        borderRadius: '0.4rem', 
+                                                        fontSize: '0.75rem', 
+                                                        fontWeight: 700, 
+                                                        cursor: 'pointer' 
+                                                    }}
+                                                >
+                                                    <i className="fa-solid fa-chart-line"></i> APMC
+                                                </button>
+                                            </div>
+                                            <button className="text-btn" onClick={() => setActiveTab('market')} style={{ fontSize: '0.8rem', padding: '0.3rem' }}>
+                                                View All
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="prices-list" style={{ marginTop: '1rem' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
-                                            <span>Paddy (Rice)</span>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontWeight: 600 }}>₹2,250</div>
-                                                <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>+2.5%</span>
+
+                                    {/* Filter by Farmer's Crops (if farmer has multiple crops) */}
+                                    {marketRateMode === 'MILL_RATES' && farmerCropNames.length > 1 && (
+                                        <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.4rem', marginBottom: '0.5rem' }}>
+                                            <button
+                                                onClick={() => setSelectedRateCrop('ALL')}
+                                                style={{
+                                                    padding: '0.25rem 0.65rem',
+                                                    fontSize: '0.75rem',
+                                                    borderRadius: '1rem',
+                                                    background: selectedRateCrop === 'ALL' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                    color: selectedRateCrop === 'ALL' ? 'var(--primary)' : 'var(--text-muted)',
+                                                    border: selectedRateCrop === 'ALL' ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                                                    cursor: 'pointer',
+                                                    whiteSpace: 'nowrap',
+                                                    fontWeight: 700
+                                                }}
+                                            >
+                                                All My Crops ({farmerCropNames.length})
+                                            </button>
+                                            {farmerCropNames.map(cName => (
+                                                <button
+                                                    key={cName}
+                                                    onClick={() => setSelectedRateCrop(cName)}
+                                                    style={{
+                                                        padding: '0.25rem 0.65rem',
+                                                        fontSize: '0.75rem',
+                                                        borderRadius: '1rem',
+                                                        background: selectedRateCrop === cName ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                        color: selectedRateCrop === cName ? 'var(--primary)' : 'var(--text-muted)',
+                                                        border: selectedRateCrop === cName ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                                                        cursor: 'pointer',
+                                                        whiteSpace: 'nowrap',
+                                                        fontWeight: 700
+                                                    }}
+                                                >
+                                                    {cName}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Content: Best Mill Offers */}
+                                    {marketRateMode === 'MILL_RATES' ? (
+                                        <div className="prices-list" style={{ marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '380px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                                            {millOffersByCrop.length === 0 ? (
+                                                <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                                    <i className="fa-solid fa-industry fa-2x" style={{ opacity: 0.3, marginBottom: '0.5rem' }}></i>
+                                                    <div>No mills currently buying this crop.</div>
+                                                    <button className="action-btn" onClick={() => setSelectedRateCrop('ALL')} style={{ marginTop: '0.5rem', fontSize: '0.75rem' }}>
+                                                        Show All Mills
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                millOffersByCrop.map(group => (
+                                                    <div key={group.cropName} style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '0.75rem', padding: '0.85rem' }}>
+                                                        {/* Crop Title with Highest Rate Highlight */}
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '0.5rem', marginBottom: '0.65rem' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                                <span style={{ fontSize: '1.05rem' }}>🌾</span>
+                                                                <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>{group.cropName}</strong>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Top Offer:</span>
+                                                                <span style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.95rem' }}>
+                                                                    ₹{group.highestPrice.toLocaleString('en-IN')}/Qtl
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Mills list sorted by price descending */}
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                            {group.offers.map((offer, idx) => {
+                                                                const isTop = idx === 0;
+                                                                return (
+                                                                    <div 
+                                                                        key={offer.mill.id}
+                                                                        style={{ 
+                                                                            display: 'flex', 
+                                                                            justifyContent: 'space-between', 
+                                                                            alignItems: 'center', 
+                                                                            padding: '0.6rem 0.75rem', 
+                                                                            borderRadius: '0.5rem', 
+                                                                            background: isTop ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255,255,255,0.03)',
+                                                                            border: isTop ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(255,255,255,0.04)',
+                                                                            boxShadow: isTop ? '0 0 12px rgba(16, 185, 129, 0.1)' : 'none'
+                                                                        }}
+                                                                    >
+                                                                        <div style={{ flex: 1, minWidth: 0, marginRight: '0.5rem' }}>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                                                                <strong style={{ fontSize: '0.88rem', color: 'var(--text-main)' }}>
+                                                                                    {offer.mill.millName}
+                                                                                </strong>
+                                                                                {isTop && (
+                                                                                    <span style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#000', fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '0.3rem', fontWeight: 800, letterSpacing: '0.3px' }}>
+                                                                                        👑 HIGHEST PRICE
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                                                                                <i className="fa-solid fa-location-dot"></i> {offer.mill.locationName || 'Nearby Mill'} • ~{offer.distance.toFixed(1)} km
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                                                            <div>
+                                                                                <div style={{ fontWeight: 800, fontSize: '1rem', color: isTop ? 'var(--primary)' : 'var(--accent-gold)' }}>
+                                                                                    ₹{offer.price.toLocaleString('en-IN')}
+                                                                                </div>
+                                                                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>per quintal</div>
+                                                                            </div>
+
+                                                                            <button
+                                                                                className="primary-btn"
+                                                                                onClick={() => {
+                                                                                    setSelectedMillForEnquiry(offer.mill);
+                                                                                    setSelectedCropForSearch(offer.farmerCrop);
+                                                                                }}
+                                                                                style={{ 
+                                                                                    padding: '0.4rem 0.75rem', 
+                                                                                    fontSize: '0.75rem', 
+                                                                                    fontWeight: 700,
+                                                                                    background: isTop ? 'var(--primary)' : 'rgba(255,255,255,0.08)',
+                                                                                    color: isTop ? '#000' : 'var(--text-main)',
+                                                                                    border: isTop ? 'none' : '1px solid rgba(255,255,255,0.1)'
+                                                                                }}
+                                                                            >
+                                                                                Send Enquiry
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    ) : (
+                                        /* APMC Mandi Benchmark Rates View */
+                                        <div className="prices-list" style={{ marginTop: '0.5rem' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 600 }}>Paddy (Rice)</div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Khammam APMC</div>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>₹2,250</div>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>+2.5%</span>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 600 }}>Maize</div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Nizamabad Mandi</div>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>₹1,960</div>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--danger)' }}>-1.2%</span>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 600 }}>Cotton</div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Adoni APMC</div>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>₹7,100</div>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>+0.8%</span>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 600 }}>Red Gram</div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Tandur Mandi</div>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>₹7,000</div>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>+1.5%</span>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0', borderBottom: '1px solid var(--border-color)' }}>
-                                            <span>Maize</span>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontWeight: 600 }}>₹1,960</div>
-                                                <span style={{ fontSize: '0.8rem', color: 'var(--danger)' }}>-1.2%</span>
-                                            </div>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.8rem 0' }}>
-                                            <span>Cotton</span>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontWeight: 600 }}>₹7,100</div>
-                                                <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>+0.8%</span>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1203,44 +1488,160 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     {/* ======================================================== */}
                     {activeTab === 'market' && (
                         <div className="dashboard view-section" style={{ display: 'block' }}>
-                            <div className="welcome-section">
+                            <div className="welcome-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
                                 <div>
-                                    <h1>Live Market Prices 📈</h1>
-                                    <p>Stay updated with the latest crop prices in major markets.</p>
+                                    <h1 style={{ margin: 0, fontSize: '1.8rem' }}>Live Mill Rates & Market Benchmark 📈</h1>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                        Real-time mill purchase prices compared against APMC Mandi benchmarks. Sell to the highest bidder.
+                                    </p>
                                 </div>
+                                <button className="action-btn" onClick={fetchAllVerifiedMills} style={{ fontSize: '0.85rem', padding: '0.5rem 0.9rem' }}>
+                                    <i className="fa-solid fa-rotate-right"></i> Refresh Mill Prices
+                                </button>
                             </div>
-                            <div className="bento-card">
-                                <div className="table-responsive">
-                                    <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
-                                        <thead>
-                                            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <th style={{ padding: '1rem' }}>Commodity</th>
-                                                <th style={{ padding: '1rem' }}>Market</th>
-                                                <th style={{ padding: '1rem' }}>Price (per Quintal)</th>
-                                                <th style={{ padding: '1rem' }}>Trend</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <td style={{ padding: '1rem', fontWeight: 600 }}>Paddy (Rice)</td>
-                                                <td style={{ padding: '1rem' }}>Warangal</td>
-                                                <td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 700 }}>₹2,250</td>
-                                                <td style={{ padding: '1rem' }}><span className="trend up">+2.5%</span></td>
-                                            </tr>
-                                            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <td style={{ padding: '1rem', fontWeight: 600 }}>Maize</td>
-                                                <td style={{ padding: '1rem' }}>Nizamabad</td>
-                                                <td style={{ padding: '1rem', color: 'var(--danger)', fontWeight: 700 }}>₹1,960</td>
-                                                <td style={{ padding: '1rem' }}><span className="trend down">-1.2%</span></td>
-                                            </tr>
-                                            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <td style={{ padding: '1rem', fontWeight: 600 }}>Cotton</td>
-                                                <td style={{ padding: '1rem' }}>Adoni</td>
-                                                <td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 700 }}>₹7,100</td>
-                                                <td style={{ padding: '1rem' }}><span className="trend up">+0.8%</span></td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+
+                            {/* Section 1: Top Paying Mills Leaderboard */}
+                            <div style={{ marginBottom: '2rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    <h2 style={{ margin: 0, fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <span>🏆 Mill Price Leaderboard (Highest Buying Offers)</span>
+                                    </h2>
+                                    {farmerCropNames.length > 0 && (
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--primary)', background: 'rgba(16, 185, 129, 0.12)', padding: '0.3rem 0.75rem', borderRadius: '1rem', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                                            <i className="fa-solid fa-wheat-awn"></i> Matched to your {farmerCropNames.length} crop{farmerCropNames.length > 1 ? 's' : ''} ({farmerCropNames.join(', ')})
+                                        </div>
+                                    )}
+                                </div>
+
+                                {millOffersByCrop.length === 0 ? (
+                                    <div className="bento-card" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+                                        <i className="fa-solid fa-industry fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                        <h3>No Active Mill Rates</h3>
+                                        <p style={{ color: 'var(--text-muted)' }}>Verified mills haven't published rates for these crops yet.</p>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: '1.25rem' }}>
+                                        {millOffersByCrop.flatMap(group => group.offers.map((offer, idx) => {
+                                            const isHighest = idx === 0;
+                                            return (
+                                                <div 
+                                                    key={`${offer.mill.id}-${offer.cropName}`} 
+                                                    className="bento-card" 
+                                                    style={{ 
+                                                        border: isHighest ? '1px solid rgba(16, 185, 129, 0.45)' : '1px solid rgba(255, 255, 255, 0.08)',
+                                                        boxShadow: isHighest ? '0 10px 25px rgba(16, 185, 129, 0.12)' : 'none',
+                                                        display: 'flex',
+                                                        flexDirection: 'column'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                                                        <div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                                <span style={{ fontSize: '0.85rem' }}>🌾</span>
+                                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>{offer.cropName}</span>
+                                                            </div>
+                                                            <h3 style={{ margin: '0.2rem 0 0 0', fontSize: '1.15rem' }}>{offer.mill.millName}</h3>
+                                                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                                                                <i className="fa-solid fa-location-dot"></i> {offer.mill.locationName || 'Location'} • ~{offer.distance.toFixed(1)} km
+                                                            </div>
+                                                        </div>
+
+                                                        {isHighest ? (
+                                                            <span style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#000', fontSize: '0.7rem', padding: '0.2rem 0.55rem', borderRadius: '0.4rem', fontWeight: 800 }}>
+                                                                👑 TOP PRICE
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', fontSize: '0.7rem', padding: '0.2rem 0.55rem', borderRadius: '0.4rem', fontWeight: 600 }}>
+                                                                Rank #{idx + 1}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div style={{ background: 'rgba(0,0,0,0.25)', borderRadius: '0.5rem', padding: '0.75rem 1rem', margin: '0.5rem 0 1rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <div>
+                                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Mill Buying Offer</div>
+                                                            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: isHighest ? 'var(--primary)' : 'var(--accent-gold)' }}>
+                                                                ₹{offer.price.toLocaleString('en-IN')}
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                            <div>Per Quintal</div>
+                                                            <div style={{ color: 'var(--primary)', fontWeight: 600 }}>100 kg</div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                            Capacity: <strong>{offer.mill.capacity || '500+'} T</strong>
+                                                        </div>
+                                                        <button
+                                                            className="primary-btn"
+                                                            onClick={() => {
+                                                                setSelectedMillForEnquiry(offer.mill);
+                                                                setSelectedCropForSearch(offer.farmerCrop);
+                                                            }}
+                                                            style={{ 
+                                                                padding: '0.45rem 0.85rem', 
+                                                                fontSize: '0.8rem',
+                                                                background: isHighest ? 'var(--primary)' : 'rgba(255,255,255,0.08)',
+                                                                color: isHighest ? '#000' : 'var(--text-main)',
+                                                                border: isHighest ? 'none' : '1px solid rgba(255,255,255,0.1)'
+                                                            }}
+                                                        >
+                                                            <i className="fa-solid fa-paper-plane"></i> Send Enquiry
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Section 2: APMC Mandi Benchmark Rates Table */}
+                            <div>
+                                <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span>📊 APMC Mandi Benchmark Rates</span>
+                                </h2>
+                                <div className="bento-card">
+                                    <div className="table-responsive">
+                                        <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <th style={{ padding: '1rem' }}>Commodity</th>
+                                                    <th style={{ padding: '1rem' }}>Major Market</th>
+                                                    <th style={{ padding: '1rem' }}>Benchmark Price (per Quintal)</th>
+                                                    <th style={{ padding: '1rem' }}>Daily Trend</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <td style={{ padding: '1rem', fontWeight: 600 }}>Paddy (Rice)</td>
+                                                    <td style={{ padding: '1rem' }}>Khammam / Warangal</td>
+                                                    <td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 700 }}>₹2,250</td>
+                                                    <td style={{ padding: '1rem' }}><span className="trend up">+2.5%</span></td>
+                                                </tr>
+                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <td style={{ padding: '1rem', fontWeight: 600 }}>Maize</td>
+                                                    <td style={{ padding: '1rem' }}>Nizamabad</td>
+                                                    <td style={{ padding: '1rem', color: 'var(--danger)', fontWeight: 700 }}>₹1,960</td>
+                                                    <td style={{ padding: '1rem' }}><span className="trend down">-1.2%</span></td>
+                                                </tr>
+                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <td style={{ padding: '1rem', fontWeight: 600 }}>Cotton</td>
+                                                    <td style={{ padding: '1rem' }}>Adoni</td>
+                                                    <td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 700 }}>₹7,100</td>
+                                                    <td style={{ padding: '1rem' }}><span className="trend up">+0.8%</span></td>
+                                                </tr>
+                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <td style={{ padding: '1rem', fontWeight: 600 }}>Red Gram</td>
+                                                    <td style={{ padding: '1rem' }}>Tandur</td>
+                                                    <td style={{ padding: '1rem', color: 'var(--primary)', fontWeight: 700 }}>₹7,000</td>
+                                                    <td style={{ padding: '1rem' }}><span className="trend up">+1.5%</span></td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
