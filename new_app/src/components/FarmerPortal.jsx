@@ -180,39 +180,6 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
         }
     };
 
-    const fetchOrders = async () => {
-        try {
-            const { data: list, error } = await supabase
-                .from('enquiries')
-                .select('*')
-                .eq('farmer_phone', user.phone)
-                .eq('status', 'accepted');
-
-            if (error) throw error;
-
-            const mappedOrders = (list || []).map(o => ({
-                id: o.id,
-                millId: o.mill_id,
-                buyerPhone: o.buyer_phone,
-                buyerName: o.buyer_name,
-                farmerPhone: o.farmer_phone,
-                farmerName: o.farmer_name,
-                cropName: o.crop_name,
-                quantity: o.quantity,
-                status: o.status,
-                pricePerQuintal: o.price_per_quintal,
-                totalPrice: o.total_price,
-                cropId: o.crop_id,
-                createdAt: o.created_at,
-                updatedAt: o.updated_at
-            })).sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-
-            setOrders(mappedOrders);
-        } catch (error) {
-            console.error("Error fetching orders:", error);
-        }
-    };
-
     const fetchAllVerifiedMills = async () => {
         try {
             const { data, error } = await supabase
@@ -244,7 +211,6 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
 
     useEffect(() => {
         fetchCrops();
-        fetchOrders();
         fetchEnquiriesData();
         fetchAllVerifiedMills();
 
