@@ -188,8 +188,7 @@ export function AuthProvider({ children }) {
                 localStorage.setItem('kisan_intended_role', intendedRole);
             }
             localStorage.setItem('kisan_auth_origin', window.location.origin);
-            const redirectPath = intendedRole ? `/login/${intendedRole}` : '';
-            const redirectUrl = `${window.location.origin}${redirectPath}`;
+            const redirectUrl = window.location.origin;
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
