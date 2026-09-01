@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../utils/supabase';
 import { kisanService } from '../services/kisanService';
 import { fetchWeatherByCoords, fetchWeatherByCity, getWeatherIcon } from '../services/weather';
@@ -17,15 +19,58 @@ L.Icon.Default.mergeOptions({
     shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
 });
 
-export default function FarmerPortal({ user, onLogout }) {
-    const [activeTab, setActiveTabState] = useState(() => {
-        return localStorage.getItem('kisan_active_tab') || localStorage.getItem('agri_active_tab') || 'dashboard';
-    });
-    const setActiveTab = (tab) => {
-        localStorage.setItem('kisan_active_tab', tab);
-        localStorage.setItem('agri_active_tab', tab);
-        setActiveTabState(tab);
+export default function FarmerPortal({ user: propUser, onLogout }) {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { user: authUser, logout: authLogout } = useAuth();
+    const user = propUser || authUser || {};
+    const handleLogout = onLogout || authLogout;
+
+    // Derive active tab from URL path
+    const pathToTab = {
+        '': 'dashboard',
+        'dashboard': 'dashboard',
+        'crops': 'crops',
+        'mills': 'mills',
+        'enquiries': 'enquiries',
+        'qr': 'qrcodes',
+        'qrcodes': 'qrcodes',
+        'load-status': 'loadstatus',
+        'loadstatus': 'loadstatus',
+        'transport': 'transport',
+        'history': 'history',
+        'market': 'market',
+        'profile': 'profile'
     };
+    const currentSubPath = location.pathname.replace(/^\/farmer\/?/, '').split('/')[0];
+    const activeTab = pathToTab[currentSubPath] || 'dashboard';
+
+    const setActiveTab = (tab) => {
+        const tabToPath = {
+            'dashboard': '/farmer/dashboard',
+            'crops': '/farmer/crops',
+            'mills': '/farmer/mills',
+            'enquiries': '/farmer/enquiries',
+            'qrcodes': '/farmer/qr',
+            'loadstatus': '/farmer/load-status',
+            'transport': '/farmer/transport',
+            'history': '/farmer/history',
+            'market': '/farmer/market',
+            'profile': '/farmer/profile'
+        };
+        navigate(tabToPath[tab] || `/farmer/${tab}`);
+        setIsSidebarOpen(false);
+    };
+
+    // CRITICAL BACK BUTTON FIX: Stays inside Farmer Portal workspace
+    const handleBack = () => {
+        if (window.history.state && window.history.state.idx > 0) {
+            navigate(-1);
+        } else {
+            navigate('/farmer/dashboard');
+        }
+    };
+
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [isAddCropOpen, setIsAddCropOpen] = useState(false);
@@ -415,7 +460,7 @@ export default function FarmerPortal({ user, onLogout }) {
                 </nav>
 
                 <div className="sidebar-bottom">
-                    <a className="nav-item logout" onClick={onLogout}>
+                    <a className="nav-item logout" onClick={handleLogout}>
                         <i className="fa-solid fa-arrow-right-from-bracket"></i>
                         <span>Logout</span>
                     </a>
@@ -430,7 +475,7 @@ export default function FarmerPortal({ user, onLogout }) {
                         <button className="menu-toggle" onClick={() => setIsSidebarOpen(true)}>
                             <i className="fa-solid fa-bars"></i>
                         </button>
-                        <button className="action-btn back-btn" onClick={onLogout}>
+                        <button className="action-btn back-btn" onClick={handleBack} title="Back to Previous Page">
                             <i className="fa-solid fa-arrow-left"></i>
                         </button>
                         <div className="search-bar">
@@ -1314,6 +1359,30 @@ export default function FarmerPortal({ user, onLogout }) {
                         </div>
                     )}
 
+                </div>
+
+                {/* Mobile Bottom Navigation */}
+                <div className="mobile-nav-bar">
+                    <button className={`mobile-nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+                        <i className="fa-solid fa-house"></i>
+                        <span>Home</span>
+                    </button>
+                    <button className={`mobile-nav-btn ${activeTab === 'crops' ? 'active' : ''}`} onClick={() => setActiveTab('crops')}>
+                        <i className="fa-solid fa-wheat-awn"></i>
+                        <span>Crops</span>
+                    </button>
+                    <button className={`mobile-nav-btn ${activeTab === 'qrcodes' ? 'active' : ''}`} onClick={() => setActiveTab('qrcodes')}>
+                        <i className="fa-solid fa-qrcode"></i>
+                        <span>QR</span>
+                    </button>
+                    <button className={`mobile-nav-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+                        <i className="fa-solid fa-clock-rotate-left"></i>
+                        <span>History</span>
+                    </button>
+                    <button className="mobile-nav-btn" onClick={() => setIsSidebarOpen(true)}>
+                        <i className="fa-solid fa-bars"></i>
+                        <span>More</span>
+                    </button>
                 </div>
             </main>
 

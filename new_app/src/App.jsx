@@ -1,60 +1,67 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import LandingPage from './components/LandingPage';
 import FarmerPortal from './components/FarmerPortal';
 import BuyerPortal from './components/BuyerPortal';
 import TransportPortal from './components/TransportPortal';
+import ConsumerPortal from './components/ConsumerPortal';
+import RolePickerModal from './components/RolePickerModal';
 import './index.css';
 
 function App() {
-  const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem('kisan_user') || localStorage.getItem('agri_user');
-    try {
-      return savedUser ? JSON.parse(savedUser) : null;
-    } catch (e) {
-      console.error("Error parsing saved user session:", e);
-      return null;
-    }
-  });
-
-  const [portal, setPortal] = useState(() => {
-    return localStorage.getItem('kisan_portal') || localStorage.getItem('agri_portal') || null;
-  });
-
-  const handleLogin = (userData, selectedPortal) => {
-    localStorage.setItem('kisan_user', JSON.stringify(userData));
-    localStorage.setItem('kisan_portal', selectedPortal);
-    localStorage.setItem('kisan_active_tab', 'dashboard');
-    // Also keep legacy keys for backwards compatibility
-    localStorage.setItem('agri_user', JSON.stringify(userData));
-    localStorage.setItem('agri_portal', selectedPortal);
-    localStorage.setItem('agri_active_tab', 'dashboard');
-    setUser(userData);
-    setPortal(selectedPortal);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('kisan_user');
-    localStorage.removeItem('kisan_portal');
-    localStorage.removeItem('kisan_active_tab');
-    localStorage.removeItem('agri_user');
-    localStorage.removeItem('agri_portal');
-    localStorage.removeItem('agri_active_tab');
-    setUser(null);
-    setPortal(null);
-  };
-
   return (
-    <>
-      {!user ? (
-        <LandingPage onLogin={handleLogin} />
-      ) : portal === 'farmers' ? (
-        <FarmerPortal user={user} onLogout={handleLogout} />
-      ) : portal === 'transporters' ? (
-        <TransportPortal user={user} onLogout={handleLogout} />
-      ) : (
-        <BuyerPortal user={user} onLogout={handleLogout} />
-      )}
-    </>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Landing & Portal Selection */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LandingPage />} />
+          <Route path="/login/:roleId" element={<LandingPage />} />
+          <Route path="/choose-role" element={<RolePickerModal />} />
+
+          {/* Protected Farmer Portal */}
+          <Route
+            path="/farmer/*"
+            element={
+              <ProtectedRoute requiredRole="farmers">
+                <FarmerPortal />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Buyer / Mill Portal */}
+          <Route
+            path="/buyer/*"
+            element={
+              <ProtectedRoute requiredRole="buyers">
+                <BuyerPortal />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Transport Provider Portal */}
+          <Route
+            path="/transport/*"
+            element={
+              <ProtectedRoute requiredRole="transporters">
+                <TransportPortal />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Consumer Marketplace Portal */}
+          <Route
+            path="/consumer/*"
+            element={<ConsumerPortal />}
+          />
+
+          {/* Fallback to Home */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

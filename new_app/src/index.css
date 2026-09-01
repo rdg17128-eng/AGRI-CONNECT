@@ -1800,4 +1800,161 @@ h6 {
     font-size: 0.74rem;
     font-weight: 700;
 }
+
+/* ==========================================
+   COMPACT THREE-PORTAL SINGLE ROW (DESKTOP)
+   ========================================== */
+.role-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    width: 100%;
+}
+
+@media (max-width: 860px) {
+    .role-cards-grid {
+        grid-template-columns: 1fr;
+        max-width: 480px;
+        margin: 0 auto;
+    }
+}
+
+.compact-role-card {
+    background: rgba(9, 23, 15, 0.82);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    border-radius: 1.25rem;
+    padding: 1.35rem 1.2rem;
+    min-height: 230px;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: var(--transition);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+}
+
+.compact-role-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent-gold);
+    background: rgba(14, 34, 22, 0.95);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(245, 158, 11, 0.2);
+}
+
+.compact-role-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    transition: var(--transition);
+}
+
+.compact-role-card:hover .compact-role-icon {
+    background: var(--accent-gold);
+    color: #000;
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+}
+
+.card-enter-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--accent-gold);
+    font-weight: 700;
+    font-size: 0.82rem;
+    margin-top: auto;
+}
+
+.compact-role-card:hover .card-enter-btn i {
+    transform: translateX(4px);
+}
+
+/* ==========================================
+   MOBILE BOTTOM NAVIGATION & ADAPTIVE LAYOUT
+   ========================================== */
+.mobile-nav-bar {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: rgba(4, 13, 8, 0.96);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border-color);
+    z-index: 999;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 0.5rem;
+}
+
+@media (max-width: 768px) {
+    .mobile-nav-bar {
+        display: flex;
+    }
+    .main-content {
+        padding-bottom: 72px !important;
+    }
+}
+
+.mobile-nav-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.35rem 0.5rem;
+    border-radius: 8px;
+    transition: var(--transition);
+}
+
+.mobile-nav-btn.active, .mobile-nav-btn:hover {
+    color: var(--primary);
+}
+
+.mobile-nav-btn i {
+    font-size: 1.05rem;
+}
+
+/* ==========================================
+   RESPONSIVE MAPS & TOUCH CONTROLS
+   ========================================== */
+.leaflet-container {
+    border-radius: 1rem !important;
+    width: 100% !important;
+    height: 440px !important;
+    z-index: 10;
+}
+
+@media (max-width: 1024px) {
+    .leaflet-container {
+        height: 360px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .leaflet-container {
+        height: 290px !important;
+    }
+    .dashboard {
+        padding: 1.15rem 0.85rem !important;
+    }
+    .welcome-section h1 {
+        font-size: 1.5rem !important;
+    }
+}
+
 

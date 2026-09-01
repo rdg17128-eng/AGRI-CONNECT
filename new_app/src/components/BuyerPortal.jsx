@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../utils/supabase';
 import { kisanService } from '../services/kisanService';
 import AddMillModal from './AddMillModal';
@@ -7,15 +9,53 @@ import QrScannerModal from './QrScannerModal';
 import QrCodeModal from './QrCodeModal';
 import KisanLogo from './KisanLogo';
 
-export default function BuyerPortal({ user, onLogout }) {
-    const [activeTab, setActiveTabState] = useState(() => {
-        return localStorage.getItem('kisan_active_tab') || localStorage.getItem('agri_active_tab') || 'dashboard';
-    });
-    const setActiveTab = (tab) => {
-        localStorage.setItem('kisan_active_tab', tab);
-        localStorage.setItem('agri_active_tab', tab);
-        setActiveTabState(tab);
+export default function BuyerPortal({ user: propUser, onLogout }) {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { user: authUser, logout: authLogout } = useAuth();
+    const user = propUser || authUser || {};
+    const handleLogout = onLogout || authLogout;
+
+    const pathToTab = {
+        '': 'dashboard',
+        'dashboard': 'dashboard',
+        'enquiries': 'enquiries',
+        'scan-qr': 'scanqr',
+        'scanqr': 'scanqr',
+        'loads': 'loads',
+        'transport': 'transport',
+        'pricing': 'mills',
+        'mills': 'mills',
+        'history': 'history',
+        'profile': 'profile'
     };
+    const currentSubPath = location.pathname.replace(/^\/buyer\/?/, '').split('/')[0];
+    const activeTab = pathToTab[currentSubPath] || 'dashboard';
+
+    const setActiveTab = (tab) => {
+        const tabToPath = {
+            'dashboard': '/buyer/dashboard',
+            'enquiries': '/buyer/enquiries',
+            'scanqr': '/buyer/scan-qr',
+            'loads': '/buyer/loads',
+            'transport': '/buyer/transport',
+            'mills': '/buyer/pricing',
+            'history': '/buyer/history',
+            'profile': '/buyer/profile'
+        };
+        navigate(tabToPath[tab] || `/buyer/${tab}`);
+        setIsSidebarOpen(false);
+    };
+
+    // CRITICAL BACK BUTTON FIX: Stays inside Buyer Portal workspace
+    const handleBack = () => {
+        if (window.history.state && window.history.state.idx > 0) {
+            navigate(-1);
+        } else {
+            navigate('/buyer/dashboard');
+        }
+    };
+
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -296,7 +336,7 @@ export default function BuyerPortal({ user, onLogout }) {
                         <div style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 700 }}>{activeMill.millName}</div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>Buyer: {businessType}</div>
                     </div>
-                    <a className="nav-item logout" onClick={onLogout}>
+                    <a className="nav-item logout" onClick={handleLogout}>
                         <i className="fa-solid fa-arrow-right-from-bracket"></i>
                         <span>Logout</span>
                     </a>
@@ -310,7 +350,7 @@ export default function BuyerPortal({ user, onLogout }) {
                         <button className="menu-toggle" onClick={() => setIsSidebarOpen(true)}>
                             <i className="fa-solid fa-bars"></i>
                         </button>
-                        <button className="action-btn back-btn" onClick={onLogout}>
+                        <button className="action-btn back-btn" onClick={handleBack} title="Back to Previous Page">
                             <i className="fa-solid fa-arrow-left"></i>
                         </button>
                         <div className="search-bar">
@@ -980,6 +1020,30 @@ export default function BuyerPortal({ user, onLogout }) {
                         </div>
                     )}
 
+                </div>
+
+                {/* Mobile Bottom Navigation */}
+                <div className="mobile-nav-bar">
+                    <button className={`mobile-nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+                        <i className="fa-solid fa-house"></i>
+                        <span>Home</span>
+                    </button>
+                    <button className={`mobile-nav-btn ${activeTab === 'enquiries' ? 'active' : ''}`} onClick={() => setActiveTab('enquiries')}>
+                        <i className="fa-solid fa-inbox"></i>
+                        <span>Enquiries</span>
+                    </button>
+                    <button className="mobile-nav-btn" onClick={() => setIsQrScannerOpen(true)} style={{ color: 'var(--primary)' }}>
+                        <i className="fa-solid fa-qrcode"></i>
+                        <span style={{ fontWeight: 700 }}>Scan QR</span>
+                    </button>
+                    <button className={`mobile-nav-btn ${activeTab === 'loads' ? 'active' : ''}`} onClick={() => setActiveTab('loads')}>
+                        <i className="fa-solid fa-truck-ramp-box"></i>
+                        <span>Loads</span>
+                    </button>
+                    <button className={`mobile-nav-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+                        <i className="fa-solid fa-clock-rotate-left"></i>
+                        <span>History</span>
+                    </button>
                 </div>
             </main>
 

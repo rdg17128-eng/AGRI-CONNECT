@@ -1,9 +1,55 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { kisanService } from '../services/kisanService';
 import KisanLogo from './KisanLogo';
 
-export default function TransportPortal({ user, onLogout }) {
-    const [activeTab, setActiveTab] = useState('requests');
+export default function TransportPortal({ user: propUser, onLogout }) {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { user: authUser, logout: authLogout } = useAuth();
+    const user = propUser || authUser || {};
+    const handleLogout = onLogout || authLogout;
+
+    const pathToTab = {
+        '': 'dashboard',
+        'dashboard': 'dashboard',
+        'requests': 'requests',
+        'active': 'active',
+        'quotes': 'quotes',
+        'completed': 'completed',
+        'history': 'history',
+        'vehicles': 'vehicle',
+        'vehicle': 'vehicle',
+        'profile': 'profile'
+    };
+    const currentSubPath = location.pathname.replace(/^\/transport\/?/, '').split('/')[0];
+    const activeTab = pathToTab[currentSubPath] || 'requests';
+
+    const setActiveTab = (tab) => {
+        const tabToPath = {
+            'dashboard': '/transport/dashboard',
+            'requests': '/transport/requests',
+            'active': '/transport/active',
+            'quotes': '/transport/quotes',
+            'completed': '/transport/completed',
+            'history': '/transport/history',
+            'vehicle': '/transport/vehicles',
+            'profile': '/transport/profile'
+        };
+        navigate(tabToPath[tab] || `/transport/${tab}`);
+        setIsSidebarOpen(false);
+    };
+
+    // CRITICAL BACK BUTTON FIX: Stays inside Transport Portal workspace
+    const handleBack = () => {
+        if (window.history.state && window.history.state.idx > 0) {
+            navigate(-1);
+        } else {
+            navigate('/transport/dashboard');
+        }
+    };
+
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [transportRequests, setTransportRequests] = useState([]);
     const [myQuotes, setMyQuotes] = useState([]);
@@ -150,7 +196,7 @@ export default function TransportPortal({ user, onLogout }) {
                 </nav>
 
                 <div className="sidebar-bottom">
-                    <a className="nav-item logout" onClick={onLogout}>
+                    <a className="nav-item logout" onClick={handleLogout}>
                         <i className="fa-solid fa-arrow-right-from-bracket"></i>
                         <span>Logout</span>
                     </a>
@@ -165,6 +211,9 @@ export default function TransportPortal({ user, onLogout }) {
                         <button className="menu-toggle" onClick={() => setIsSidebarOpen(true)}>
                             <i className="fa-solid fa-bars"></i>
                         </button>
+                        <button className="action-btn back-btn" onClick={handleBack} title="Back to Previous Page">
+                            <i className="fa-solid fa-arrow-left"></i>
+                        </button>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <span className="role-tag" style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-gold)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '0.3rem 0.8rem', borderRadius: '1rem', fontSize: '0.8rem', fontWeight: 700 }}>
                                 <i className="fa-solid fa-truck-moving" style={{ marginRight: '0.4rem' }}></i>
@@ -174,7 +223,7 @@ export default function TransportPortal({ user, onLogout }) {
                     </div>
 
                     <div className="header-actions">
-                        <button className="action-btn back-btn" onClick={onLogout} title="Logout">
+                        <button className="action-btn back-btn" onClick={handleLogout} title="Sign Out">
                             <i className="fa-solid fa-arrow-right-from-bracket"></i>
                         </button>
                     </div>
@@ -672,6 +721,30 @@ export default function TransportPortal({ user, onLogout }) {
                         </div>
                     )}
 
+                </div>
+
+                {/* Mobile Bottom Navigation */}
+                <div className="mobile-nav-bar">
+                    <button className={`mobile-nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+                        <i className="fa-solid fa-house"></i>
+                        <span>Home</span>
+                    </button>
+                    <button className={`mobile-nav-btn ${activeTab === 'requests' ? 'active' : ''}`} onClick={() => setActiveTab('requests')}>
+                        <i className="fa-solid fa-clipboard-list"></i>
+                        <span>Loads</span>
+                    </button>
+                    <button className={`mobile-nav-btn ${activeTab === 'active' ? 'active' : ''}`} onClick={() => setActiveTab('active')}>
+                        <i className="fa-solid fa-route"></i>
+                        <span>Active</span>
+                    </button>
+                    <button className={`mobile-nav-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+                        <i className="fa-solid fa-clock-rotate-left"></i>
+                        <span>History</span>
+                    </button>
+                    <button className="mobile-nav-btn" onClick={() => setIsSidebarOpen(true)}>
+                        <i className="fa-solid fa-bars"></i>
+                        <span>More</span>
+                    </button>
                 </div>
             </main>
 
