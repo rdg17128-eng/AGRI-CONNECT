@@ -189,6 +189,7 @@ export function AuthProvider({ children }) {
             if (intendedRole) {
                 localStorage.setItem('kisan_intended_role', intendedRole);
             }
+            localStorage.setItem('kisan_auth_origin', window.location.origin);
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
