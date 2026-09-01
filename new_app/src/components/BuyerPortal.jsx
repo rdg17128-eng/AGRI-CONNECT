@@ -95,8 +95,12 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-        fetchMills();
-        refreshAllData();
+        
+        const init = async () => {
+            const loadedMills = await fetchMills();
+            await refreshAllData(loadedMills);
+        };
+        init();
 
         const unsub = kisanService.subscribe(() => {
             refreshAllData();
@@ -109,18 +113,19 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const refreshAllData = async () => {
+    const refreshAllData = async (passedMills) => {
         await Promise.all([
-            fetchEnquiries(),
+            fetchEnquiries(passedMills),
             fetchLoadsReceived(),
             fetchTransportRequests(),
-            fetchHistoryData()
+            fetchHistoryData(passedMills)
         ]);
     };
 
-    const fetchHistoryData = async () => {
+    const fetchHistoryData = async (passedMills) => {
         try {
-            const hist = await kisanService.getMillHistory(mills[0]?.id || user.phone, user.phone);
+            const currentMills = passedMills || mills;
+            const hist = await kisanService.getMillHistory(currentMills[0]?.id || user.phone, user.phone);
             setMillHistory(hist);
         } catch (err) {
             console.error("History fetch error:", err);
@@ -154,17 +159,24 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                 addedAt: m.created_at
             }));
             setMills(mappedMills);
+            return mappedMills;
         } catch (error) {
             console.error("Error fetching mills:", error);
+            return [];
         } finally {
             setLoadingMills(false);
         }
     };
 
-    const fetchEnquiries = async () => {
+    const fetchEnquiries = async (passedMills) => {
         setLoadingEnquiries(true);
         try {
-            const list = await kisanService.getEnquiries({ buyerPhone: user.phone });
+            const currentMills = passedMills || mills;
+            const myMillIds = currentMills.map(m => m.id).filter(Boolean);
+            const list = await kisanService.getEnquiries({ 
+                buyerPhone: user.phone,
+                millIds: myMillIds.length > 0 ? myMillIds : undefined
+            });
             setEnquiries(list);
         } catch (error) {
             console.error("Error fetching enquiries:", error);
@@ -620,8 +632,19 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                                 </div>
 
                                                 {enq.message && (
-                                                    <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.5rem', borderRadius: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.3rem' }}>
-                                                        "{enq.message}"
+                                                    <div style={{ 
+                                                        background: 'rgba(16, 185, 129, 0.08)', 
+                                                        border: '1px solid rgba(16, 185, 129, 0.25)', 
+                                                        padding: '0.65rem 0.85rem', 
+                                                        borderRadius: '0.6rem', 
+                                                        marginTop: '0.5rem' 
+                                                    }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary)', fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem', letterSpacing: '0.5px' }}>
+                                                            <i className="fa-solid fa-message"></i> FARMER MESSAGE / TERMS:
+                                                        </div>
+                                                        <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontStyle: 'italic', wordBreak: 'break-word', lineHeight: 1.4 }}>
+                                                            "{enq.message}"
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>

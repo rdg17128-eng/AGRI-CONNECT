@@ -214,49 +214,43 @@ class KisanService {
         localEnquiries.unshift(fullEnquiry);
         setLocal(STORAGE_KEYS.ENQUIRIES, localEnquiries);
 
-        // Attempt Supabase insert
+        // Attempt Supabase insert with actual schema columns
         try {
+            const dbPayload = {
+                mill_id: enquiryData.mill_id ? String(enquiryData.mill_id) : null,
+                mill_name: enquiryData.mill_name || null,
+                buyer_phone: enquiryData.buyer_phone || null,
+                buyer_name: enquiryData.buyer_name || null,
+                farmer_phone: enquiryData.farmer_phone,
+                farmer_name: enquiryData.farmer_name,
+                crop_name: enquiryData.crop_name,
+                acres: Number(enquiryData.acres) || 0,
+                quantity: Number(enquiryData.quantity) || Number(enquiryData.acres) * 2,
+                status: 'pending',
+                price_per_quintal: Number(enquiryData.expected_price || enquiryData.offered_price) || null,
+                total_price: Number(enquiryData.total_price) || null,
+                crop_id: enquiryData.crop_id ? String(enquiryData.crop_id) : null,
+                with_transport: Boolean(enquiryData.transport_required || enquiryData.with_transport),
+                message: enquiryData.message || '',
+                farmer_lat: enquiryData.farmer_lat || null,
+                farmer_lng: enquiryData.farmer_lng || null,
+                farmer_location_name: enquiryData.farmer_location_name || '',
+                mill_lat: enquiryData.mill_lat || null,
+                mill_lng: enquiryData.mill_lng || null,
+                mill_location_name: enquiryData.mill_location_name || '',
+                distance: enquiryData.distance || 0
+            };
+
             const { data, error } = await supabase
                 .from('enquiries')
-                .insert([{
-                    enquiry_code: enquiryCode,
-                    mill_id: String(enquiryData.mill_id),
-                    mill_name: enquiryData.mill_name,
-                    buyer_phone: enquiryData.buyer_phone,
-                    buyer_name: enquiryData.buyer_name,
-                    farmer_phone: enquiryData.farmer_phone,
-                    farmer_name: enquiryData.farmer_name,
-                    farmer_id: enquiryData.farmer_phone,
-                    crop_id: enquiryData.crop_id ? String(enquiryData.crop_id) : null,
-                    crop_name: enquiryData.crop_name,
-                    acres: Number(enquiryData.acres) || 0,
-                    quantity: Number(enquiryData.quantity) || Number(enquiryData.acres) * 2,
-                    expected_price: Number(enquiryData.expected_price) || 0,
-                    offered_price: Number(enquiryData.offered_price) || 0,
-                    total_price: Number(enquiryData.total_price) || 0,
-                    transport_required: Boolean(enquiryData.transport_required),
-                    vehicle_capacity: enquiryData.vehicle_capacity || null,
-                    vehicle_type: enquiryData.vehicle_type || null,
-                    pickup_location: enquiryData.pickup_location || '',
-                    delivery_location: enquiryData.delivery_location || '',
-                    pickup_date: enquiryData.pickup_date || '',
-                    transport_instructions: enquiryData.transport_instructions || '',
-                    message: enquiryData.message || '',
-                    status: 'PENDING',
-                    load_status: 'PENDING',
-                    created_at: fullEnquiry.created_at,
-                    farmer_lat: enquiryData.farmer_lat || null,
-                    farmer_lng: enquiryData.farmer_lng || null,
-                    farmer_location_name: enquiryData.farmer_location_name || '',
-                    mill_lat: enquiryData.mill_lat || null,
-                    mill_lng: enquiryData.mill_lng || null,
-                    mill_location_name: enquiryData.mill_location_name || '',
-                    distance: enquiryData.distance || 0
-                }])
+                .insert([dbPayload])
                 .select();
 
-            if (data && data[0]) {
+            if (error) {
+                console.error("Supabase enquiry sync error:", error);
+            } else if (data && data[0]) {
                 fullEnquiry.id = data[0].id;
+                fullEnquiry.created_at = data[0].created_at;
             }
         } catch (e) {
             console.warn("Supabase enquiry sync error (using local backup):", e);
@@ -276,17 +270,31 @@ class KisanService {
         return fullEnquiry;
     }
 
-    async getEnquiries({ farmerPhone, millId, buyerPhone } = {}) {
+    async getEnquiries({ farmerPhone, millId, millIds, buyerPhone } = {}) {
         let list = [];
         try {
             let query = supabase.from('enquiries').select('*').order('created_at', { ascending: false });
-            if (farmerPhone) query = query.eq('farmer_phone', farmerPhone);
-            if (millId) query = query.eq('mill_id', String(millId));
-            else if (buyerPhone) query = query.eq('buyer_phone', buyerPhone);
+            if (farmerPhone) {
+                query = query.eq('farmer_phone', farmerPhone);
+            } else if (millId) {
+                query = query.eq('mill_id', String(millId));
+            } else if (millIds && Array.isArray(millIds) && millIds.length > 0) {
+                query = query.in('mill_id', millIds.map(String));
+            } else if (buyerPhone) {
+                query = query.eq('buyer_phone', buyerPhone);
+            }
 
             const { data, error } = await query;
-            if (!error && data && data.length > 0) {
-                list = data;
+            if (!error && data) {
+                list = data.map(item => ({
+                    ...item,
+                    enquiry_code: item.enquiry_code || ('ENQ-' + (item.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()),
+                    transport_required: item.with_transport ?? item.transport_required ?? false,
+                    offered_price: item.price_per_quintal || item.offered_price || item.expected_price || 'Market Rate',
+                    expected_price: item.price_per_quintal || item.expected_price || item.offered_price || 'Market Rate',
+                    quantity: item.quantity || (item.acres ? item.acres * 2 : 10),
+                    status: (item.status || 'PENDING').toUpperCase()
+                }));
             }
         } catch (e) {
             console.warn("Supabase fetch enquiries fallback:", e);
@@ -297,14 +305,15 @@ class KisanService {
         const filteredLocal = localList.filter(eq => {
             if (farmerPhone && eq.farmer_phone !== farmerPhone) return false;
             if (millId && String(eq.mill_id) !== String(millId) && eq.buyer_phone !== buyerPhone) return false;
+            if (millIds && Array.isArray(millIds) && millIds.length > 0 && !millIds.map(String).includes(String(eq.mill_id)) && eq.buyer_phone !== buyerPhone) return false;
             return true;
         });
 
-        // Combine unique by enquiry_code
+        // Combine unique by id or enquiry_code
         const map = new Map();
-        list.forEach(item => map.set(item.enquiry_code || item.id, item));
+        list.forEach(item => map.set(item.id || item.enquiry_code, item));
         filteredLocal.forEach(item => {
-            const key = item.enquiry_code || item.id;
+            const key = item.id || item.enquiry_code;
             if (!map.has(key)) map.set(key, item);
         });
 
@@ -332,12 +341,10 @@ class KisanService {
             await supabase
                 .from('enquiries')
                 .update({
-                    status: 'ACCEPTED',
-                    load_status: 'ACCEPTED_BY_MILL',
-                    accepted_at: acceptedAt,
-                    accepted_by: millUser.name || millUser.phone
+                    status: 'accepted',
+                    updated_at: acceptedAt
                 })
-                .or(`id.eq.${enquiryIdOrCode},enquiry_code.eq.${enquiryIdOrCode}`);
+                .eq('id', enquiryIdOrCode);
         } catch (e) {
             console.warn("Supabase update enquiry error:", e);
         }
@@ -351,7 +358,7 @@ class KisanService {
                 updatedEnquiry.farmer_phone,
                 'farmers',
                 'Enquiry Accepted by Mill!',
-                `Mill ${updatedEnquiry.mill_name || 'Buyer'} accepted your enquiry ${updatedEnquiry.enquiry_code}. Your Crop Verification QR is now ready!`,
+                `Mill ${updatedEnquiry.mill_name || 'Buyer'} accepted your enquiry ${updatedEnquiry.enquiry_code || updatedEnquiry.id}. Your Crop Verification QR is now ready!`,
                 'success',
                 { enquiryCode: updatedEnquiry.enquiry_code }
             );
@@ -384,8 +391,8 @@ class KisanService {
         try {
             await supabase
                 .from('enquiries')
-                .update({ status: 'REJECTED', load_status: 'REJECTED' })
-                .or(`id.eq.${enquiryIdOrCode},enquiry_code.eq.${enquiryIdOrCode}`);
+                .update({ status: 'rejected', updated_at: new Date().toISOString() })
+                .eq('id', enquiryIdOrCode);
         } catch (e) {
             console.warn("Supabase reject enquiry error:", e);
         }
