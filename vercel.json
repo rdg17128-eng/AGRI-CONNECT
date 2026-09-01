@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npm --prefix new_app run build",
+  "outputDirectory": "new_app/dist",
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
