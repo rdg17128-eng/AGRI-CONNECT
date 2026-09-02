@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { supabase } from '../utils/supabase';
 import { kisanService } from '../services/kisanService';
 import { fetchWeatherByCoords, fetchWeatherByCity, getWeatherIcon } from '../services/weather';
@@ -9,6 +10,7 @@ import SendEnquiryModal from './SendEnquiryModal';
 import QrCodeModal from './QrCodeModal';
 import KisanLogo from './KisanLogo';
 import FarmerProfileView from './FarmerProfileView';
+import LanguageSelector from './LanguageSelector';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -24,6 +26,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
     const navigate = useNavigate();
     const location = useLocation();
     const { user: authUser, logout: authLogout } = useAuth();
+    const { t, language } = useLanguage();
     const user = propUser || authUser || {};
     const handleLogout = onLogout || authLogout;
 
@@ -493,19 +496,19 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                 <nav className="nav-menu">
                     <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-house"></i>
-                        <span>Dashboard</span>
+                        <span>{t('dashboard')}</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'crops' ? 'active' : ''}`} onClick={() => { setActiveTab('crops'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-seedling"></i>
-                        <span>My Crops</span>
+                        <span>{t('crops')}</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'mills' ? 'active' : ''}`} onClick={() => { setActiveTab('mills'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-industry"></i>
-                        <span>Nearby Mills</span>
+                        <span>{t('mills')}</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'enquiries' ? 'active' : ''}`} onClick={() => { setActiveTab('enquiries'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-paper-plane"></i>
-                        <span>My Enquiries</span>
+                        <span>{t('enquiries')}</span>
                         {enquiries.length > 0 && (
                             <span className="nav-badge" style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem' }}>
                                 {enquiries.length}
@@ -514,7 +517,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     </a>
                     <a className={`nav-item ${activeTab === 'qrcodes' ? 'active' : ''}`} onClick={() => { setActiveTab('qrcodes'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-qrcode" style={{ color: 'var(--primary)' }}></i>
-                        <span style={{ color: 'var(--primary)', fontWeight: 700 }}>My QR Codes</span>
+                        <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{t('qrcodes')}</span>
                         {acceptedEnquiries.length > 0 && (
                             <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
                                 {acceptedEnquiries.length}
@@ -523,7 +526,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     </a>
                     <a className={`nav-item ${activeTab === 'payments' ? 'active' : ''}`} onClick={() => { setActiveTab('payments'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-wallet"></i>
-                        <span>Payments</span>
+                        <span>{t('payments')}</span>
                         {loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED').length > 0 && (
                             <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.72rem', fontWeight: 800 }}>
                                 {loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED').length} Paid
@@ -532,30 +535,30 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     </a>
                     <a className={`nav-item ${activeTab === 'loadstatus' ? 'active' : ''}`} onClick={() => { setActiveTab('loadstatus'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-timeline"></i>
-                        <span>Load Status</span>
+                        <span>{t('loadstatus')}</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'transport' ? 'active' : ''}`} onClick={() => { setActiveTab('transport'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-truck-fast"></i>
-                        <span>Transport</span>
+                        <span>{t('transport')}</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-clock-rotate-left"></i>
-                        <span>History & Ledger</span>
+                        <span>{t('history')}</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'market' ? 'active' : ''}`} onClick={() => { setActiveTab('market'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-chart-line"></i>
-                        <span>Market Prices</span>
+                        <span>{t('market')}</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => { setActiveTab('profile'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-user-gear"></i>
-                        <span>Profile</span>
+                        <span>{t('profile')}</span>
                     </a>
                 </nav>
 
                 <div className="sidebar-bottom">
                     <a className="nav-item logout" onClick={handleLogout}>
                         <i className="fa-solid fa-arrow-right-from-bracket"></i>
-                        <span>Logout</span>
+                        <span>{t('logout')}</span>
                     </a>
                 </div>
             </aside>
@@ -577,7 +580,10 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                         </div>
                     </div>
 
-                    <div className="header-actions" style={{ alignItems: 'center', gap: '1rem' }}>
+                    <div className="header-actions" style={{ alignItems: 'center', gap: '0.85rem' }}>
+                        {/* Language Selector in Header */}
+                        <LanguageSelector />
+
                         {acceptedEnquiries.length > 0 && (
                             <button 
                                 className="primary-btn" 
@@ -585,7 +591,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                 style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', borderRadius: '0.75rem' }}
                             >
                                 <i className="fa-solid fa-qrcode"></i>
-                                View Verification QR ({acceptedEnquiries.length})
+                                {t('viewQr')} ({acceptedEnquiries.length})
                             </button>
                         )}
 
@@ -617,11 +623,11 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                         <div className="dashboard view-section" style={{ display: 'block' }}>
                             <div className="welcome-section">
                                 <div>
-                                    <h1>Good Day, {profileName || 'Kisan'}! 🌾</h1>
-                                    <p>Connected directly to mills, transparent grain discovery, and instant QR verification.</p>
+                                    <h1>{t('goodDay')}, {profileName || 'Kisan'}! 🌾</h1>
+                                    <p>{t('welcomeSub')}</p>
                                 </div>
                                 <button className="primary-btn" onClick={() => setIsAddCropOpen(true)}>
-                                    <i className="fa-solid fa-plus"></i> Add New Crop
+                                    <i className="fa-solid fa-plus"></i> {t('addNewCrop')}
                                 </button>
                             </div>
 
@@ -629,7 +635,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                 <div className="stat-card">
                                     <div className="stat-icon crops"><i className="fa-solid fa-wheat-awn"></i></div>
                                     <div className="stat-details">
-                                        <h3>Active Crops</h3>
+                                        <h3>{t('activeCrops')}</h3>
                                         <h2>{cropCountText}</h2>
                                         <span className={locationStatusClass}>{cropLocationText}</span>
                                     </div>
@@ -637,7 +643,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                 <div className="stat-card">
                                     <div className="stat-icon orders"><i className="fa-solid fa-paper-plane"></i></div>
                                     <div className="stat-details">
-                                        <h3>Sent Enquiries</h3>
+                                        <h3>{t('sentEnquiries')}</h3>
                                         <h2>{enquiries.length}</h2>
                                         <span className="trend neutral">{enquiries.filter(e => e.status === 'ACCEPTED').length} Accepted</span>
                                     </div>
@@ -645,18 +651,18 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                 <div className="stat-card">
                                     <div className="stat-icon revenue"><i className="fa-solid fa-qrcode"></i></div>
                                     <div className="stat-details">
-                                        <h3>Verification QRs</h3>
+                                        <h3>{t('verificationQrs')}</h3>
                                         <h2>{acceptedEnquiries.length} Ready</h2>
-                                        <span className="trend up">Scan-ready for delivery</span>
+                                        <span className="trend up">{t('readyForDelivery')}</span>
                                     </div>
                                 </div>
                                 <div className="stat-card" onClick={() => setActiveTab('payments')} style={{ cursor: 'pointer' }}>
                                     <div className="stat-icon revenue" style={{ background: 'rgba(16, 185, 129, 0.2)', color: 'var(--primary)' }}><i className="fa-solid fa-wallet"></i></div>
                                     <div className="stat-details">
-                                        <h3>Direct Payments</h3>
+                                        <h3>{t('directPayments')}</h3>
                                         <h2>₹{loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED').reduce((sum, p) => sum + (Number(p.total_amount || p.price) || 0), 0).toLocaleString('en-IN')}</h2>
                                         <span className="trend up">
-                                            {loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED').length} Settlements Received
+                                            {loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED').length} {t('settlementsReceived')}
                                         </span>
                                     </div>
                                 </div>

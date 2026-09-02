@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabase';
+import { useLanguage } from '../context/LanguageContext';
+import LanguageSelector from './LanguageSelector';
 
 export default function FarmerProfileView({ 
     user = {}, 
@@ -31,11 +33,14 @@ export default function FarmerProfileView({
     const [confirmPin, setConfirmPin] = useState('');
     const [showPin, setShowPin] = useState(false);
 
+    // Global Language
+    const { language: globalLang, setLanguage: setGlobalLang } = useLanguage();
+
     // Preferences & Alerts
     const [priceAlerts, setPriceAlerts] = useState(true);
     const [orderSms, setOrderSms] = useState(true);
     const [weatherAdvisories, setWeatherAdvisories] = useState(true);
-    const [language, setLanguage] = useState('English');
+    const [language, setLanguage] = useState(globalLang || 'en');
 
     // UX states
     const [isSaving, setIsSaving] = useState(false);
@@ -177,7 +182,12 @@ export default function FarmerProfileView({
     };
 
     // Save Preferences
-    const handleSavePreferences = () => {
+    const handleSavePreferences = (newLangCode) => {
+        const langCode = newLangCode || language;
+        if (newLangCode) {
+            setLanguage(newLangCode);
+            setGlobalLang(newLangCode);
+        }
         const storageKey = `kisan_farmer_ext_${user.phone || 'default'}`;
         const existing = JSON.parse(localStorage.getItem(storageKey) || '{}');
         const updated = {
@@ -185,10 +195,10 @@ export default function FarmerProfileView({
             priceAlerts,
             orderSms,
             weatherAdvisories,
-            language
+            language: langCode
         };
         localStorage.setItem(storageKey, JSON.stringify(updated));
-        showToast('Notification preferences saved! 🔔');
+        showToast('Preferences & Regional Language updated! 🌐');
     };
 
     return (
@@ -786,23 +796,25 @@ export default function FarmerProfileView({
                             />
                         </div>
 
-                        <div className="form-group-modern" style={{ marginTop: '0.5rem' }}>
-                            <label>
-                                <i className="fa-solid fa-language" style={{ color: 'var(--primary)' }}></i>
-                                Preferred Language
-                            </label>
-                            <div className="input-with-icon">
-                                <i className="fa-solid fa-globe field-icon"></i>
-                                <select 
-                                    value={language} 
-                                    onChange={e => { setLanguage(e.target.value); handleSavePreferences(); }}
-                                >
-                                    <option value="English">English</option>
-                                    <option value="Telugu">Telugu (తెలుగు)</option>
-                                    <option value="Hindi">Hindi (हिंदी)</option>
-                                    <option value="Kannada">Kannada (ಕನ್ನಡ)</option>
-                                </select>
+                        {/* Regional Language Preference Section */}
+                        <div style={{ marginTop: '1rem', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '1rem', padding: '1.25rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                <div>
+                                    <h4 style={{ margin: 0, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <i className="fa-solid fa-language" style={{ color: 'var(--primary)', fontSize: '1.2rem' }}></i>
+                                        Regional Language Preference / భాష / भाषा
+                                    </h4>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '0.25rem 0 0 0' }}>
+                                        Select your preferred language for dashboard navigation, crop details, and payments.
+                                    </p>
+                                </div>
+                                <span className="status-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', padding: '0.2rem 0.6rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 700 }}>
+                                    Active: {globalLang === 'te' ? 'తెలుగు (Telugu)' : globalLang === 'hi' ? 'हिन्दी (Hindi)' : globalLang === 'kn' ? 'ಕನ್ನಡ (Kannada)' : 'English'}
+                                </span>
                             </div>
+
+                            {/* Interactive Language Cards */}
+                            <LanguageSelector variant="cards" />
                         </div>
 
                     </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import LandingPage from './components/LandingPage';
 import FarmerPortal from './components/FarmerPortal';
@@ -13,9 +14,10 @@ import './index.css';
 function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <BrowserRouter>
-        <Routes>
+      <LanguageProvider>
+        <AuthProvider>
+          <BrowserRouter>
+          <Routes>
           {/* Public Landing & Portal Selection */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LandingPage />} />
@@ -57,6 +59,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </LanguageProvider>
     </ErrorBoundary>
   );
 }

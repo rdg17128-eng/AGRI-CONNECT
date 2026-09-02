@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import AuthModal from './AuthModal';
 import RolePickerModal from './RolePickerModal';
 import KisanLogo from './KisanLogo';
+import LanguageSelector from './LanguageSelector';
 
 export default function LandingPage() {
     const [selectedRole, setSelectedRole] = useState(null);
     const { user, role, needsRoleSelection, assignRoleToGoogleUser } = useAuth();
+    const { t } = useLanguage();
     const navigate = useNavigate();
     const { roleId } = useParams();
 
@@ -37,25 +40,25 @@ export default function LandingPage() {
         {
             id: 'farmers',
             icon: 'fa-tractor',
-            title: 'Farmer Portal',
+            title: t('farmerPortalTitle', 'Farmer Portal'),
             subtitle: 'Empower Your Yield',
-            desc: 'Real-time weather, market rates, direct mill enquiries, and crop verification QR.',
+            desc: t('farmerPortalDesc', 'Real-time weather, market rates, direct mill enquiries, and crop verification QR.'),
             route: '/farmer/dashboard'
         },
         {
             id: 'buyers',
             icon: 'fa-industry',
-            title: 'Mills',
+            title: t('millPortalTitle', 'Mills'),
             subtitle: 'Grain Procurement',
-            desc: 'Review farmer loads, scan gate QR codes, verify intake batches, and set mill prices.',
+            desc: t('millPortalDesc', 'Review farmer loads, scan gate QR codes, verify intake batches, and set mill prices.'),
             route: '/buyer/dashboard'
         },
         {
             id: 'transporters',
             icon: 'fa-truck-moving',
-            title: 'Transport Provider',
+            title: t('transportPortalTitle', 'Transport Provider'),
             subtitle: 'Smart Agro-Logistics',
-            desc: 'Smart truck capacity matching, haulage bids, trip progress, and freight payouts.',
+            desc: t('transportPortalDesc', 'Smart truck capacity matching, haulage bids, trip progress, and freight payouts.'),
             route: '/transport/dashboard'
         },
     ];
@@ -101,16 +104,21 @@ export default function LandingPage() {
                 margin: '0 auto',
                 padding: '2rem 1.25rem'
             }}>
+                {/* Language Switcher Bar */}
+                <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                    <LanguageSelector />
+                </div>
+
                 {/* Header */}
                 <header style={{ marginBottom: '1.5rem', animation: 'fadeInDown 0.6s ease-out', textAlign: 'center' }}>
                     <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <KisanLogo size="lg" />
                     </div>
                     <h1 style={{ marginBottom: '0.4rem', fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)', fontWeight: 800, lineHeight: 1.2 }}>
-                        Unified Agricultural Ecosystem
+                        {t('tagline', 'Unified Agricultural Ecosystem')}
                     </h1>
                     <p style={{ fontSize: '0.92rem', maxWidth: '680px', margin: '0 auto', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-                        Empowering Indian farmers, mill operators, and transport fleets with QR-verified intake, live pricing, and transparent digital logistics.
+                        {t('welcomeSub', 'Empowering Indian farmers, mill operators, and transport fleets with QR-verified intake, live pricing, and transparent digital logistics.')}
                     </p>
                 </header>
 
@@ -143,7 +151,7 @@ export default function LandingPage() {
                                 </p>
 
                                 <div className="card-enter-btn">
-                                    <span>Enter Portal</span>
+                                    <span>{t('enterPortal', 'Enter Portal')}</span>
                                     <i className="fa-solid fa-arrow-right" style={{ fontSize: '0.75rem', transition: 'transform 0.2s' }}></i>
                                 </div>
                             </div>

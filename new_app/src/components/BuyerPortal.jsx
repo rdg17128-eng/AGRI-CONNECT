@@ -8,6 +8,8 @@ import UpdatePricesModal from './UpdatePricesModal';
 import QrScannerModal from './QrScannerModal';
 import QrCodeModal from './QrCodeModal';
 import KisanLogo from './KisanLogo';
+import { useLanguage } from '../context/LanguageContext';
+import LanguageSelector from './LanguageSelector';
 
 export default function BuyerPortal({ user: propUser, onLogout }) {
     const navigate = useNavigate();
@@ -476,7 +478,10 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                         </div>
                     </div>
 
-                    <div className="header-actions" style={{ alignItems: 'center', gap: '1rem' }}>
+                    <div className="header-actions" style={{ alignItems: 'center', gap: '0.85rem' }}>
+                        {/* Language Selector */}
+                        <LanguageSelector />
+
                         {/* Prominent Scan Farmer QR CTA Button */}
                         <button 
                             className="primary-btn pulse-glow"
