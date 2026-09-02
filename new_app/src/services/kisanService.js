@@ -997,9 +997,56 @@ class KisanService {
     }
 
     // ==========================================
-    // LOAD RECEIVING
     // ==========================================
-    async acceptLoad(enquiryCode, loggedInMill = {}) {
+    // LOAD RECEIVING & PAYMENTS WORKFLOW
+    // ==========================================
+    getFarmerBankDetails(farmerPhone) {
+        if (!farmerPhone) {
+            return {
+                accountHolder: 'Ramesh Reddy',
+                bankName: 'State Bank of India',
+                accountNumber: '308912445892',
+                ifscCode: 'SBIN0004521',
+                upiId: '9876543210@upi'
+            };
+        }
+        try {
+            const saved = localStorage.getItem(`kisan_farmer_ext_${farmerPhone}`);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                return {
+                    accountHolder: parsed.accountHolder || parsed.name || 'Ramesh Reddy',
+                    bankName: parsed.bankName || 'State Bank of India',
+                    accountNumber: parsed.accountNumber && !parsed.accountNumber.includes('XXXX') ? parsed.accountNumber : '308912445892',
+                    ifscCode: parsed.ifscCode || 'SBIN0004521',
+                    upiId: parsed.upiId || `${farmerPhone}@upi`
+                };
+            }
+        } catch {}
+
+        return {
+            accountHolder: 'Ramesh Reddy',
+            bankName: 'State Bank of India',
+            accountNumber: '308912445892',
+            ifscCode: 'SBIN0004521',
+            upiId: `${farmerPhone}@upi`
+        };
+    }
+
+    saveFarmerBankDetails(farmerPhone, bankDetails) {
+        if (!farmerPhone) return;
+        const key = `kisan_farmer_ext_${farmerPhone}`;
+        let current = {};
+        try {
+            current = JSON.parse(localStorage.getItem(key) || '{}');
+        } catch {}
+        const merged = { ...current, ...bankDetails };
+        localStorage.setItem(key, JSON.stringify(merged));
+        this.notify('bank_details_updated', { farmerPhone, bankDetails: merged });
+        return merged;
+    }
+
+    async acceptLoad(enquiryCode, loggedInMill = {}, actualTonnesParam = null, notes = '') {
         const receivedAt = new Date().toISOString();
         const record = await this.findEnquiryRecord(enquiryCode);
         const targetId = record?.id || enquiryCode;
@@ -1015,12 +1062,20 @@ class KisanService {
                 eq.qr_scanned = true;
                 eq.received_at = receivedAt;
                 eq.received_by = loggedInMill.millName || loggedInMill.name || loggedInMill.phone || 'Mill Gate';
+                if (actualTonnesParam) {
+                    eq.actual_received_tonnes = Number(actualTonnesParam);
+                    eq.actual_received_quintals = Math.round(Number(actualTonnesParam) * 10 * 10) / 10;
+                }
                 targetEnquiry = eq;
             }
             return eq;
         });
         if (!targetEnquiry && record) {
             targetEnquiry = { ...record, status: 'LOAD_RECEIVED', load_status: 'LOAD_RECEIVED', qr_scanned: true, received_at: receivedAt };
+            if (actualTonnesParam) {
+                targetEnquiry.actual_received_tonnes = Number(actualTonnesParam);
+                targetEnquiry.actual_received_quintals = Math.round(Number(actualTonnesParam) * 10 * 10) / 10;
+            }
             updatedEnquiries.unshift(targetEnquiry);
         }
         setLocal(STORAGE_KEYS.ENQUIRIES, updatedEnquiries);
@@ -1040,31 +1095,53 @@ class KisanService {
             console.warn("Supabase accept load error:", e);
         }
 
-        // 3. Record in loads table
+        // 3. Compute Tonnes -> Quintals -> Total Amount automatically
+        const actualTonnes = Number(actualTonnesParam || targetEnquiry?.quantity || (targetEnquiry?.acres ? targetEnquiry.acres * 2 : 10));
+        const actualQuintals = Math.round(actualTonnes * 10 * 10) / 10; // 1 Tonne = 10 Quintals
+        const pricePerQuintal = Number(targetEnquiry?.offered_price || targetEnquiry?.expected_price || 2450);
+        const totalAmount = Math.round(actualQuintals * pricePerQuintal);
+        const farmerPhone = targetEnquiry?.farmer_phone || targetEnquiry?.farmer_id || '';
+        const bankDetails = this.getFarmerBankDetails(farmerPhone);
+
+        // 4. Record in loads table with PENDING payment status
         const loadRecord = {
             id: 'LOAD-' + Date.now(),
             enquiry_id: record?.id || enquiryCode,
             enquiry_code: record?.enquiry_code || enquiryCode,
-            farmer_id: targetEnquiry?.farmer_phone || '',
-            farmer_name: targetEnquiry?.farmer_name || '',
+            farmer_id: farmerPhone,
+            farmer_name: targetEnquiry?.farmer_name || 'Farmer',
+            farmer_phone: farmerPhone,
             mill_id: String(loggedInMill.id || targetEnquiry?.mill_id || ''),
             mill_name: loggedInMill.millName || targetEnquiry?.mill_name || 'Processing Mill',
+            buyer_phone: loggedInMill.phone || loggedInMill.ownerPhone || targetEnquiry?.buyer_phone || '',
             crop_id: targetEnquiry?.crop_id || null,
-            crop_name: targetEnquiry?.crop_name || '',
-            quantity: targetEnquiry?.quantity || 10,
+            crop_name: targetEnquiry?.crop_name || 'Paddy (Rice)',
+            quantity: actualTonnes,
+            quantity_tonnes: actualTonnes,
+            quantity_quintals: actualQuintals,
+            price_per_quintal: pricePerQuintal,
+            price: totalAmount,
+            total_amount: totalAmount,
             acres: targetEnquiry?.acres || 5,
-            price: targetEnquiry?.total_price || targetEnquiry?.expected_price || 0,
             transport_method: targetEnquiry?.transport_required || targetEnquiry?.with_transport ? 'KisanConnect Logistics' : 'Self Arranged',
             status: 'RECEIVED',
+            payment_status: 'PENDING', // 'PENDING' | 'COMPLETED'
             received_at: receivedAt,
+            paid_at: null,
+            payment_method: null,
+            transaction_reference: null,
+            farmer_bank_details: bankDetails,
+            notes: notes || '',
             received_by: loggedInMill.millName || loggedInMill.name || loggedInMill.phone || 'Mill Gate'
         };
 
         const loads = getLocal(STORAGE_KEYS.LOADS, []);
-        loads.unshift(loadRecord);
-        setLocal(STORAGE_KEYS.LOADS, loads);
+        // Avoid duplicate active loads for the same enquiry
+        const filteredLoads = loads.filter(l => l.enquiry_code !== loadRecord.enquiry_code);
+        filteredLoads.unshift(loadRecord);
+        setLocal(STORAGE_KEYS.LOADS, filteredLoads);
 
-        // 4. Update transport request to DELIVERED if applicable
+        // 5. Update transport request to DELIVERED if applicable
         const requests = getLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, []);
         const updatedReqs = requests.map(r => {
             if (r.enquiry_id === targetId || r.enquiry_code === enquiryCode) {
@@ -1075,21 +1152,80 @@ class KisanService {
         });
         setLocal(STORAGE_KEYS.TRANSPORT_REQUESTS, updatedReqs);
 
-        // 5. Notify farmer
+        // 6. Notify farmer
         if (targetEnquiry) {
             this.addNotification(
-                targetEnquiry.farmer_phone,
+                farmerPhone,
                 'farmers',
-                'Load Received by Mill! 🎉',
-                `Great news! Mill ${loadRecord.mill_name} has verified your QR code and confirmed gate receipt of ${targetEnquiry.quantity || (targetEnquiry.acres * 2)} Tons of ${targetEnquiry.crop_name}.`,
-                'success',
-                { enquiryCode: targetEnquiry.enquiry_code || enquiryCode }
+                'Crop Load Received at Mill! 🚚⚖️',
+                `Mill ${loadRecord.mill_name} weighed and received ${actualTonnes} Tonnes (${actualQuintals} Qtl) of ${targetEnquiry.crop_name}. Total calculated payment: ₹${totalAmount.toLocaleString('en-IN')}. Payment is pending.`,
+                'info',
+                { enquiryCode: targetEnquiry.enquiry_code || enquiryCode, loadId: loadRecord.id }
             );
         }
 
         this.notify('load_received', loadRecord);
+        this.notify('payments_changed', loadRecord);
         this.notify('enquiry_updated', targetEnquiry);
         return loadRecord;
+    }
+
+    async recordLoadReceived(enquiryCode, actualTonnes, loggedInMill = {}, notes = '') {
+        return this.acceptLoad(enquiryCode, loggedInMill, actualTonnes, notes);
+    }
+
+    async completePayment(loadIdOrCode, { paymentMethod = 'Bank Transfer (NEFT/RTGS)', referenceNumber = '', remarks = '' } = {}, millUser = {}) {
+        const paidAt = new Date().toISOString();
+        const loads = getLocal(STORAGE_KEYS.LOADS, []);
+        let updatedLoad = null;
+
+        const updatedLoads = loads.map(ld => {
+            if (ld.id === loadIdOrCode || ld.enquiry_code === loadIdOrCode) {
+                ld.payment_status = 'COMPLETED';
+                ld.paid_at = paidAt;
+                ld.payment_method = paymentMethod;
+                ld.transaction_reference = referenceNumber || ('UTR-' + Math.floor(10000000 + Math.random() * 90000000));
+                ld.payment_remarks = remarks;
+                ld.paid_by = millUser.name || millUser.millName || millUser.phone || 'Mill Finance';
+                updatedLoad = { ...ld };
+            }
+            return ld;
+        });
+
+        setLocal(STORAGE_KEYS.LOADS, updatedLoads);
+
+        if (updatedLoad) {
+            // Also sync enquiry payment status
+            const enquiries = getLocal(STORAGE_KEYS.ENQUIRIES, []);
+            const updatedEnqs = enquiries.map(eq => {
+                if (eq.id === updatedLoad.enquiry_id || eq.enquiry_code === updatedLoad.enquiry_code) {
+                    eq.payment_status = 'COMPLETED';
+                    eq.paid_at = paidAt;
+                    eq.paid_amount = updatedLoad.total_amount;
+                }
+                return eq;
+            });
+            setLocal(STORAGE_KEYS.ENQUIRIES, updatedEnqs);
+
+            // Notify farmer
+            const farmerTargetPhone = updatedLoad.farmer_phone || updatedLoad.farmer_id;
+            if (farmerTargetPhone) {
+                this.addNotification(
+                    farmerTargetPhone,
+                    'farmers',
+                    'Payment Completed! 💰🎉',
+                    `Payment of ₹${updatedLoad.total_amount?.toLocaleString('en-IN')} has been completed by ${updatedLoad.mill_name} for ${updatedLoad.quantity_tonnes} Tonnes (${updatedLoad.quantity_quintals} Qtl) of ${updatedLoad.crop_name}. Ref: ${updatedLoad.transaction_reference}`,
+                    'success',
+                    { enquiryCode: updatedLoad.enquiry_code, loadId: updatedLoad.id }
+                );
+            }
+
+            this.notify('payment_completed', updatedLoad);
+            this.notify('payments_changed', updatedLoad);
+            this.notify('load_updated', updatedLoad);
+        }
+
+        return updatedLoad;
     }
 
     async getLoadsReceived({ millId, farmerPhone, buyerPhone } = {}) {
@@ -1107,8 +1243,8 @@ class KisanService {
 
         const localLoads = getLocal(STORAGE_KEYS.LOADS, []);
         const filteredLocal = localLoads.filter(ld => {
-            if (farmerPhone && ld.farmer_id !== farmerPhone) return false;
-            if (millId && String(ld.mill_id) !== String(millId)) return false;
+            if (farmerPhone && ld.farmer_id !== farmerPhone && ld.farmer_phone !== farmerPhone) return false;
+            if (millId && String(ld.mill_id) !== String(millId) && ld.buyer_phone !== buyerPhone) return false;
             return true;
         });
 
@@ -1117,9 +1253,32 @@ class KisanService {
         filteredLocal.forEach(l => {
             const key = l.enquiry_code || l.id;
             if (!map.has(key)) map.set(key, l);
+            else map.set(key, { ...map.get(key), ...l });
         });
 
-        return Array.from(map.values()).sort((a, b) => new Date(b.received_at || 0) - new Date(a.received_at || 0));
+        return Array.from(map.values()).map(l => {
+            const tonnes = Number(l.quantity_tonnes || l.quantity || 10);
+            const quintals = Number(l.quantity_quintals || Math.round(tonnes * 10 * 10) / 10);
+            const rate = Number(l.price_per_quintal || 2450);
+            const total = Number(l.total_amount || l.price || Math.round(quintals * rate));
+            return {
+                ...l,
+                quantity: tonnes,
+                quantity_tonnes: tonnes,
+                quantity_quintals: quintals,
+                price_per_quintal: rate,
+                total_amount: total,
+                payment_status: (l.payment_status || 'PENDING').toUpperCase()
+            };
+        }).sort((a, b) => new Date(b.received_at || 0) - new Date(a.received_at || 0));
+    }
+
+    async getLoadsAndPayments({ millId, buyerPhone, farmerPhone, status } = {}) {
+        const loads = await this.getLoadsReceived({ millId, buyerPhone, farmerPhone });
+        if (status && status !== 'ALL') {
+            return loads.filter(l => (l.payment_status || 'PENDING').toUpperCase() === status.toUpperCase());
+        }
+        return loads;
     }
 
     // ==========================================

@@ -11,6 +11,15 @@ export default function QrScannerModal({ loggedInMill, onClose, onVerificationSu
     const [isConfirmingLoad, setIsConfirmingLoad] = useState(false);
     const [isReceiving, setIsReceiving] = useState(false);
     const [loadReceivedSuccess, setLoadReceivedSuccess] = useState(false);
+    const [actualTonnes, setActualTonnes] = useState('');
+
+    useEffect(() => {
+        if (verificationResult?.enquiry?.quantity) {
+            setActualTonnes(String(verificationResult.enquiry.quantity));
+        } else if (verificationResult?.enquiry?.acres) {
+            setActualTonnes(String(Number(verificationResult.enquiry.acres) * 2));
+        }
+    }, [verificationResult]);
 
     const scannerRef = useRef(null);
     const qrRegionId = "kisan-qr-reader-viewport";
@@ -109,9 +118,11 @@ export default function QrScannerModal({ loggedInMill, onClose, onVerificationSu
         if (!verificationResult?.enquiry?.enquiry_code) return;
         setIsReceiving(true);
         try {
+            const tonnes = Number(actualTonnes) || verificationResult.enquiry.quantity || 10;
             const loadRecord = await kisanService.acceptLoad(
                 verificationResult.enquiry.enquiry_code,
-                loggedInMill
+                loggedInMill,
+                tonnes
             );
             setIsReceiving(false);
             setIsConfirmingLoad(false);
@@ -382,60 +393,105 @@ export default function QrScannerModal({ loggedInMill, onClose, onVerificationSu
 
                                 {/* Action Buttons */}
                                 {!loadReceivedSuccess && (
-                                    <div>
-                                        {isConfirmingLoad ? (
-                                            <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--primary)', marginBottom: '1rem', textAlign: 'center' }}>
-                                                <p style={{ fontWeight: 700, margin: '0 0 0.75rem 0', fontSize: '0.95rem' }}>
-                                                    Confirm that this crop/load has been received by the mill?
-                                                </p>
-                                                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                                    <button 
-                                                        className="text-btn" 
-                                                        onClick={() => setIsConfirmingLoad(false)}
-                                                        style={{ flex: 1, justifyContent: 'center' }}
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button 
-                                                        className="primary-btn"
-                                                        onClick={handleConfirmLoadReceived}
-                                                        disabled={isReceiving}
-                                                        style={{ flex: 1, justifyContent: 'center' }}
-                                                    >
-                                                        {isReceiving ? 'Confirming...' : 'Confirm Load Received'}
-                                                    </button>
+                                    isConfirmingLoad ? (
+                                        <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '1.25rem', borderRadius: '1rem', border: '1px solid var(--primary)', marginBottom: '1rem', textAlign: 'left' }}>
+                                            <h4 style={{ fontWeight: 800, margin: '0 0 0.5rem 0', fontSize: '1rem', color: 'var(--primary)' }}>
+                                                <i className="fa-solid fa-scale-balanced" style={{ marginRight: '0.4rem' }}></i>
+                                                Weighbridge Produce & Payment Bill
+                                            </h4>
+                                            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '0 0 0.75rem 0' }}>
+                                                Enter the actual weighbridge weight in tonnes received at mill gate:
+                                            </p>
+
+                                            <div style={{ marginBottom: '0.75rem' }}>
+                                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                                                    Actual Tonnes Received (Tons)
+                                                </label>
+                                                <div className="input-group">
+                                                    <i className="fa-solid fa-weight-hanging"></i>
+                                                    <input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0.1"
+                                                        value={actualTonnes}
+                                                        onChange={(e) => setActualTonnes(e.target.value)}
+                                                        required
+                                                        style={{ background: 'transparent' }}
+                                                    />
                                                 </div>
                                             </div>
-                                        ) : (
+
+                                            {/* Live Quintals & Payment Calculation */}
+                                            {(() => {
+                                                const t = Number(actualTonnes) || 0;
+                                                const q = Math.round(t * 10 * 10) / 10;
+                                                const rate = Number(eq?.offered_price || eq?.expected_price || 2450);
+                                                const bill = Math.round(q * rate);
+                                                return (
+                                                    <div style={{ background: 'rgba(0, 0, 0, 0.4)', borderRadius: '0.5rem', padding: '0.65rem 0.85rem', fontSize: '0.82rem', border: '1px solid rgba(16, 185, 129, 0.25)', marginBottom: '0.75rem' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                                            <span style={{ color: 'var(--text-muted)' }}>Converted Quintals (1T = 10 Qtl):</span>
+                                                            <strong>{q} Quintals</strong>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                                            <span style={{ color: 'var(--text-muted)' }}>Agreed Rate per Qtl:</span>
+                                                            <strong>₹{rate.toLocaleString('en-IN')} / Qtl</strong>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.15)', paddingTop: '0.35rem', marginTop: '0.35rem', alignItems: 'center' }}>
+                                                            <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>Total Payment Bill:</span>
+                                                            <strong style={{ fontSize: '1.05rem', color: 'var(--accent-gold)' }}>₹{bill.toLocaleString('en-IN')}</strong>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+
                                             <div style={{ display: 'flex', gap: '0.75rem' }}>
                                                 <button 
-                                                    className="action-btn"
-                                                    onClick={() => setScanState('scanning')}
-                                                    style={{ flex: 1, justifyContent: 'center', padding: '0.85rem' }}
+                                                    className="text-btn" 
+                                                    onClick={() => setIsConfirmingLoad(false)}
+                                                    style={{ flex: 1, justifyContent: 'center' }}
                                                 >
-                                                    <i className="fa-solid fa-redo"></i>
-                                                    Scan Another
+                                                    Cancel
                                                 </button>
-
-                                                {verificationResult.isMatch && (
-                                                    <button 
-                                                        className="primary-btn"
-                                                        onClick={() => setIsConfirmingLoad(true)}
-                                                        disabled={eq?.load_status === 'LOAD_RECEIVED'}
-                                                        style={{ 
-                                                            flex: 2, 
-                                                            justifyContent: 'center', 
-                                                            padding: '0.85rem',
-                                                            background: eq?.load_status === 'LOAD_RECEIVED' ? '#4b5563' : 'var(--primary)'
-                                                        }}
-                                                    >
-                                                        <i className="fa-solid fa-truck-ramp-box"></i>
-                                                        {eq?.load_status === 'LOAD_RECEIVED' ? 'Already Received' : 'Accept Load'}
-                                                    </button>
-                                                )}
+                                                <button 
+                                                    className="primary-btn" 
+                                                    onClick={handleConfirmLoadReceived}
+                                                    disabled={isReceiving || !actualTonnes || Number(actualTonnes) <= 0}
+                                                    style={{ flex: 1.5, justifyContent: 'center', fontWeight: 800 }}
+                                                >
+                                                    {isReceiving ? 'Confirming...' : 'Confirm Load Received'}
+                                                </button>
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                            <button 
+                                                className="action-btn"
+                                                onClick={() => setScanState('scanning')}
+                                                style={{ flex: 1, justifyContent: 'center', padding: '0.85rem' }}
+                                            >
+                                                <i className="fa-solid fa-redo"></i>
+                                                Scan Another
+                                            </button>
+
+                                            {verificationResult.isMatch && (
+                                                <button 
+                                                    className="primary-btn"
+                                                    onClick={() => setIsConfirmingLoad(true)}
+                                                    disabled={eq?.load_status === 'LOAD_RECEIVED'}
+                                                    style={{ 
+                                                        flex: 2, 
+                                                        justifyContent: 'center', 
+                                                        padding: '0.85rem',
+                                                        background: eq?.load_status === 'LOAD_RECEIVED' ? '#4b5563' : 'var(--primary)'
+                                                    }}
+                                                >
+                                                    <i className="fa-solid fa-truck-ramp-box"></i>
+                                                    {eq?.load_status === 'LOAD_RECEIVED' ? 'Already Received' : 'Accept Load'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )
                                 )}
 
                                 {loadReceivedSuccess && (

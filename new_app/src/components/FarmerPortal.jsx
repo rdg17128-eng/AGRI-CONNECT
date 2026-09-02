@@ -36,6 +36,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
         'enquiries': 'enquiries',
         'qr': 'qrcodes',
         'qrcodes': 'qrcodes',
+        'payments': 'payments',
         'load-status': 'loadstatus',
         'loadstatus': 'loadstatus',
         'transport': 'transport',
@@ -53,6 +54,7 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
             'mills': '/farmer/mills',
             'enquiries': '/farmer/enquiries',
             'qrcodes': '/farmer/qr',
+            'payments': '/farmer/payments',
             'loadstatus': '/farmer/load-status',
             'transport': '/farmer/transport',
             'history': '/farmer/history',
@@ -104,6 +106,26 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
     const [loadingEnquiries, setLoadingEnquiries] = useState(false);
     const [historyList, setHistoryList] = useState([]);
     const [historyFilter, setHistoryFilter] = useState('ALL');
+
+    // Payments & Settlements States
+    const [loadsAndPayments, setLoadsAndPayments] = useState([]);
+    const [loadingPayments, setLoadingPayments] = useState(false);
+    const [selectedPaymentForReceipt, setSelectedPaymentForReceipt] = useState(null);
+    const [paymentCategoryFilter, setPaymentCategoryFilter] = useState('ALL'); // 'ALL' | 'COMPLETED' | 'PENDING'
+    const [farmerBankDetails, setFarmerBankDetails] = useState({
+        accountHolder: user.name || 'Ramesh Reddy',
+        bankName: 'State Bank of India',
+        accountNumber: '308912445892',
+        ifscCode: 'SBIN0004521',
+        upiId: `${user.phone || '9876543210'}@upi`
+    });
+    const [isEditBankModalOpen, setIsEditBankModalOpen] = useState(false);
+    const [editBankHolder, setEditBankHolder] = useState('');
+    const [editBankName, setEditBankName] = useState('');
+    const [editBankAccount, setEditBankAccount] = useState('');
+    const [editBankIfsc, setEditBankIfsc] = useState('');
+    const [editBankUpi, setEditBankUpi] = useState('');
+    const [isSavingBank, setIsSavingBank] = useState(false);
 
     // Watch for location changes and update weather
     useEffect(() => {
@@ -211,15 +233,61 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
         }
     };
 
+    const fetchPaymentsData = async () => {
+        setLoadingPayments(true);
+        try {
+            const list = await kisanService.getLoadsReceived({ farmerPhone: user.phone });
+            setLoadsAndPayments(list);
+            const bank = kisanService.getFarmerBankDetails(user.phone);
+            setFarmerBankDetails(bank);
+        } catch (err) {
+            console.error("Error fetching farmer payments:", err);
+        } finally {
+            setLoadingPayments(false);
+        }
+    };
+
+    const handleOpenEditBankModal = () => {
+        setEditBankHolder(farmerBankDetails.accountHolder || profileName || user.name || '');
+        setEditBankName(farmerBankDetails.bankName || 'State Bank of India');
+        setEditBankAccount(farmerBankDetails.accountNumber || '');
+        setEditBankIfsc(farmerBankDetails.ifscCode || '');
+        setEditBankUpi(farmerBankDetails.upiId || `${user.phone}@upi`);
+        setIsEditBankModalOpen(true);
+    };
+
+    const handleSaveBankDetails = (e) => {
+        e.preventDefault();
+        setIsSavingBank(true);
+        try {
+            const updated = kisanService.saveFarmerBankDetails(user.phone, {
+                accountHolder: editBankHolder,
+                bankName: editBankName,
+                accountNumber: editBankAccount,
+                ifscCode: editBankIfsc,
+                upiId: editBankUpi
+            });
+            setFarmerBankDetails(updated);
+            setIsEditBankModalOpen(false);
+        } catch (err) {
+            console.error("Error saving bank details:", err);
+            alert("Failed to save bank details.");
+        } finally {
+            setIsSavingBank(false);
+        }
+    };
+
     useEffect(() => {
         fetchCrops();
         fetchEnquiriesData();
         fetchAllVerifiedMills();
+        fetchPaymentsData();
 
         const unsub = kisanService.subscribe((event, payload) => {
             fetchCrops();
             fetchEnquiriesData();
             fetchAllVerifiedMills();
+            fetchPaymentsData();
 
             if (event === 'crop_removed' || event === 'crops_changed') {
                 if (payload?.cropId) {
@@ -453,6 +521,15 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                             </span>
                         )}
                     </a>
+                    <a className={`nav-item ${activeTab === 'payments' ? 'active' : ''}`} onClick={() => { setActiveTab('payments'); setIsSidebarOpen(false); }}>
+                        <i className="fa-solid fa-wallet"></i>
+                        <span>Payments</span>
+                        {loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED').length > 0 && (
+                            <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.72rem', fontWeight: 800 }}>
+                                {loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED').length} Paid
+                            </span>
+                        )}
+                    </a>
                     <a className={`nav-item ${activeTab === 'loadstatus' ? 'active' : ''}`} onClick={() => { setActiveTab('loadstatus'); setIsSidebarOpen(false); }}>
                         <i className="fa-solid fa-timeline"></i>
                         <span>Load Status</span>
@@ -571,6 +648,16 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                                         <h3>Verification QRs</h3>
                                         <h2>{acceptedEnquiries.length} Ready</h2>
                                         <span className="trend up">Scan-ready for delivery</span>
+                                    </div>
+                                </div>
+                                <div className="stat-card" onClick={() => setActiveTab('payments')} style={{ cursor: 'pointer' }}>
+                                    <div className="stat-icon revenue" style={{ background: 'rgba(16, 185, 129, 0.2)', color: 'var(--primary)' }}><i className="fa-solid fa-wallet"></i></div>
+                                    <div className="stat-details">
+                                        <h3>Direct Payments</h3>
+                                        <h2>₹{loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED').reduce((sum, p) => sum + (Number(p.total_amount || p.price) || 0), 0).toLocaleString('en-IN')}</h2>
+                                        <span className="trend up">
+                                            {loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED').length} Settlements Received
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -1782,6 +1869,280 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     )}
 
                     {/* ======================================================== */}
+                    {/* TAB: PAYMENTS & SETTLEMENTS */}
+                    {/* ======================================================== */}
+                    {activeTab === 'payments' && (() => {
+                        const completedPayments = loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'COMPLETED');
+                        const pendingPayments = loadsAndPayments.filter(p => (p.payment_status || 'PENDING').toUpperCase() === 'PENDING');
+
+                        const totalPaidAmt = completedPayments.reduce((sum, p) => sum + (Number(p.total_amount || p.price) || 0), 0);
+                        const totalPendingAmt = pendingPayments.reduce((sum, p) => sum + (Number(p.total_amount || p.price) || 0), 0);
+                        const totalTonnes = loadsAndPayments.reduce((sum, p) => sum + (Number(p.quantity_tonnes || p.quantity) || 0), 0);
+                        const totalQuintals = loadsAndPayments.reduce((sum, p) => sum + (Number(p.quantity_quintals) || (Number(p.quantity_tonnes || p.quantity) * 10) || 0), 0);
+
+                        const displayedPayments = paymentCategoryFilter === 'COMPLETED'
+                            ? completedPayments
+                            : paymentCategoryFilter === 'PENDING'
+                            ? pendingPayments
+                            : loadsAndPayments;
+
+                        return (
+                            <div>
+                                {/* Header */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                                    <div>
+                                        <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Direct Mill Payments & Settlements 💰</h2>
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                            Transparent weighbridge quantities, quintal rate conversions, and direct bank payouts from mills
+                                        </p>
+                                    </div>
+                                    <button className="primary-btn" onClick={handleOpenEditBankModal}>
+                                        <i className="fa-solid fa-building-columns"></i>
+                                        Update Bank Account
+                                    </button>
+                                </div>
+
+                                {/* Financial Summary Cards */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '1.75rem' }}>
+                                    <div className="bento-card" style={{ padding: '1.25rem', border: '1px solid rgba(16, 185, 129, 0.35)', background: 'rgba(16, 185, 129, 0.05)' }}>
+                                        <div style={{ fontSize: '0.78rem', color: 'var(--primary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Payments Received</div>
+                                        <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', margin: '0.3rem 0' }}>
+                                            ₹{totalPaidAmt.toLocaleString('en-IN')}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            {completedPayments.length} completed mill transfer{completedPayments.length !== 1 ? 's' : ''}
+                                        </div>
+                                    </div>
+
+                                    <div className="bento-card" style={{ padding: '1.25rem', border: '1px solid rgba(234, 179, 8, 0.35)', background: 'rgba(234, 179, 8, 0.05)' }}>
+                                        <div style={{ fontSize: '0.78rem', color: '#fbbf24', textTransform: 'uppercase', fontWeight: 700 }}>Pending Settlements</div>
+                                        <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fbbf24', margin: '0.3rem 0' }}>
+                                            ₹{totalPendingAmt.toLocaleString('en-IN')}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            {pendingPayments.length} load{pendingPayments.length !== 1 ? 's' : ''} awaiting mill payment
+                                        </div>
+                                    </div>
+
+                                    <div className="bento-card" style={{ padding: '1.25rem' }}>
+                                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Total Weighed Produce</div>
+                                        <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fff', margin: '0.3rem 0' }}>
+                                            {totalTonnes.toFixed(1)} <span style={{ fontSize: '1rem', color: 'var(--accent-gold)' }}>Tons</span>
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            {totalQuintals.toFixed(0)} Quintals delivered
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* My Registered Bank Account Banner */}
+                                <div className="bento-card" style={{ background: 'rgba(0, 0, 0, 0.35)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '1.25rem', marginBottom: '1.75rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <i className="fa-solid fa-building-columns" style={{ color: 'var(--primary)', fontSize: '1.2rem' }}></i>
+                                            <h4 style={{ margin: 0, fontSize: '0.95rem' }}>My Registered Bank Account for Mill Direct Payouts</h4>
+                                        </div>
+                                        <span className="status-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', padding: '0.2rem 0.6rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 700 }}>
+                                            <i className="fa-solid fa-circle-check" style={{ marginRight: '0.3rem' }}></i> Verified for Direct Transfer
+                                        </span>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
+                                        <div>
+                                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem' }}>Account Holder</span>
+                                            <strong>{farmerBankDetails.accountHolder || profileName || 'Ramesh Reddy'}</strong>
+                                        </div>
+                                        <div>
+                                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem' }}>Bank Name</span>
+                                            <strong>{farmerBankDetails.bankName || 'State Bank of India'}</strong>
+                                        </div>
+                                        <div>
+                                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem' }}>Account Number</span>
+                                            <strong style={{ fontFamily: 'monospace', color: '#fff' }}>{farmerBankDetails.accountNumber || '308912445892'}</strong>
+                                        </div>
+                                        <div>
+                                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem' }}>IFSC Code</span>
+                                            <strong style={{ fontFamily: 'monospace', color: '#fff' }}>{farmerBankDetails.ifscCode || 'SBIN0004521'}</strong>
+                                        </div>
+                                        <div>
+                                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem' }}>UPI ID</span>
+                                            <strong style={{ fontFamily: 'monospace', color: 'var(--accent-gold)' }}>{farmerBankDetails.upiId || `${user.phone}@upi`}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Category Filter Pills */}
+                                <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+                                    {[
+                                        { id: 'ALL', label: 'All Transactions', count: loadsAndPayments.length },
+                                        { id: 'COMPLETED', label: 'Payment Completed', count: completedPayments.length, badgeColor: 'var(--primary)' },
+                                        { id: 'PENDING', label: 'Payment Pending', count: pendingPayments.length, badgeColor: '#fbbf24' }
+                                    ].map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            className={`action-btn ${paymentCategoryFilter === cat.id ? 'primary-btn' : ''}`}
+                                            onClick={() => setPaymentCategoryFilter(cat.id)}
+                                            style={{
+                                                padding: '0.6rem 1.1rem',
+                                                fontSize: '0.85rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem',
+                                                background: paymentCategoryFilter === cat.id ? 'var(--primary)' : 'rgba(255, 255, 255, 0.04)',
+                                                border: paymentCategoryFilter === cat.id ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                                                color: paymentCategoryFilter === cat.id ? '#000' : 'var(--text-main)',
+                                                fontWeight: paymentCategoryFilter === cat.id ? 800 : 500
+                                            }}
+                                        >
+                                            <span>{cat.label}</span>
+                                            <span style={{
+                                                background: paymentCategoryFilter === cat.id ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.1)',
+                                                color: paymentCategoryFilter === cat.id ? '#000' : cat.badgeColor || 'var(--text-muted)',
+                                                padding: '0.1rem 0.45rem',
+                                                borderRadius: '1rem',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 800
+                                            }}>
+                                                {cat.count}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Payments List Table */}
+                                {displayedPayments.length === 0 ? (
+                                    <div className="bento-card" style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+                                        <i className="fa-solid fa-wallet fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                        <h3>No Transactions Found</h3>
+                                        <p style={{ color: 'var(--text-muted)', maxWidth: '450px', margin: '0.5rem auto 1.5rem' }}>
+                                            {paymentCategoryFilter === 'COMPLETED'
+                                                ? 'No completed payments yet. When a mill verifies your crop and transfers funds, they will appear here.'
+                                                : paymentCategoryFilter === 'PENDING'
+                                                ? 'No pending payouts. All delivered produce has been settled!'
+                                                : 'No payment records found. Send enquiries to mills and bring your harvest to mill gates to start receiving payments.'}
+                                        </p>
+                                        <button className="primary-btn" onClick={() => setActiveTab('mills')}>
+                                            Search Nearby Mills
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="bento-card" style={{ padding: 0, overflow: 'hidden' }}>
+                                        <div className="table-responsive">
+                                            <table className="orders-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                                                <thead>
+                                                    <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)' }}>
+                                                        <th style={{ padding: '1rem' }}>Enquiry Ref</th>
+                                                        <th style={{ padding: '1rem' }}>Purchaser Mill</th>
+                                                        <th style={{ padding: '1rem' }}>Crop & Quantity</th>
+                                                        <th style={{ padding: '1rem' }}>Price / Quintal</th>
+                                                        <th style={{ padding: '1rem' }}>Total Amount</th>
+                                                        <th style={{ padding: '1rem' }}>Status</th>
+                                                        <th style={{ padding: '1rem' }}>Payment Date</th>
+                                                        <th style={{ padding: '1rem', textAlign: 'right' }}>Receipt</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {displayedPayments.map(item => {
+                                                        const isCompleted = (item.payment_status || 'PENDING').toUpperCase() === 'COMPLETED';
+                                                        const tonnes = Number(item.quantity_tonnes || item.quantity || 10);
+                                                        const quintals = Number(item.quantity_quintals || Math.round(tonnes * 10 * 10) / 10);
+                                                        const rate = Number(item.price_per_quintal || 2450);
+                                                        const total = Number(item.total_amount || item.price || (quintals * rate));
+
+                                                        return (
+                                                            <tr key={item.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <div style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                                                                        {item.enquiry_code}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                                                        {new Date(item.received_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                                                                    </div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <strong>{item.mill_name}</strong>
+                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                                        Intake Gate
+                                                                    </div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <strong style={{ color: 'var(--primary)' }}>{item.crop_name}</strong>
+                                                                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                                                                        {tonnes} Tonnes <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({quintals} Quintals)</span>
+                                                                    </div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <strong style={{ color: 'var(--accent-gold)' }}>₹{rate.toLocaleString('en-IN')}</strong>
+                                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>per Quintal</div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <strong style={{ fontSize: '1.1rem', color: isCompleted ? 'var(--primary)' : '#fbbf24' }}>
+                                                                        ₹{total.toLocaleString('en-IN')}
+                                                                    </strong>
+                                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                                        {quintals} Qtl × ₹{rate}
+                                                                    </div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    {isCompleted ? (
+                                                                        <div>
+                                                                            <span className="status-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.3rem 0.6rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem' }}>
+                                                                                <i className="fa-solid fa-circle-check" style={{ marginRight: '0.3rem' }}></i>
+                                                                                COMPLETED
+                                                                            </span>
+                                                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem', fontFamily: 'monospace' }}>
+                                                                                {item.transaction_reference}
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="status-badge" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#fbbf24', border: '1px solid rgba(234, 179, 8, 0.3)', padding: '0.3rem 0.6rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem' }}>
+                                                                            <i className="fa-solid fa-clock" style={{ marginRight: '0.3rem' }}></i>
+                                                                            AWAITING MILL
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem', fontSize: '0.85rem' }}>
+                                                                    {item.paid_at ? (
+                                                                        <div>
+                                                                            <strong>{new Date(item.paid_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong>
+                                                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                                                                {new Date(item.paid_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Pending Payout</span>
+                                                                    )}
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem', textAlign: 'right' }}>
+                                                                    <button
+                                                                        className="action-btn"
+                                                                        onClick={() => setSelectedPaymentForReceipt(item)}
+                                                                        style={{ padding: '0.5rem 0.85rem', fontSize: '0.8rem' }}
+                                                                    >
+                                                                        <i className="fa-solid fa-receipt"></i>
+                                                                        {isCompleted ? 'View Bill' : 'View Slip'}
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* ======================================================== */}
                     {/* TAB: PROFILE */}
                     {/* ======================================================== */}
                     {activeTab === 'profile' && (
@@ -1845,6 +2206,202 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     enquiry={selectedEnquiryForQr}
                     onClose={() => setSelectedEnquiryForQr(null)}
                 />
+            )}
+
+            {/* ======================================================== */}
+            {/* MODAL: VIEW FARMER PAYMENT RECEIPT */}
+            {/* ======================================================== */}
+            {selectedPaymentForReceipt && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }}>
+                    <div className="modal-content" style={{ maxWidth: '520px', width: '92%', background: '#0d1712', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '1.25rem', padding: '1.75rem', color: '#f0fdf4' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <i className="fa-solid fa-receipt" style={{ color: 'var(--primary)', fontSize: '1.3rem' }}></i>
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Produce Payment Receipt</h3>
+                            </div>
+                            <button className="action-btn text-btn" onClick={() => setSelectedPaymentForReceipt(null)} style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                                <i className="fa-solid fa-xmark" style={{ fontSize: '1.25rem' }}></i>
+                            </button>
+                        </div>
+
+                        <div style={{ background: 'rgba(0,0,0,0.4)', borderRadius: '0.75rem', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.85rem' }}>
+                            <div style={{ textAlign: 'center', borderBottom: '1px dashed rgba(255,255,255,0.15)', paddingBottom: '0.75rem', marginBottom: '0.5rem' }}>
+                                <span className="status-badge" style={{
+                                    background: (selectedPaymentForReceipt.payment_status || 'PENDING').toUpperCase() === 'COMPLETED' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(234, 179, 8, 0.15)',
+                                    color: (selectedPaymentForReceipt.payment_status || 'PENDING').toUpperCase() === 'COMPLETED' ? 'var(--primary)' : '#fbbf24',
+                                    fontWeight: 800,
+                                    padding: '0.35rem 0.8rem',
+                                    borderRadius: '1rem',
+                                    fontSize: '0.8rem'
+                                }}>
+                                    {(selectedPaymentForReceipt.payment_status || 'PENDING').toUpperCase() === 'COMPLETED' ? '✓ SETTLEMENT COMPLETED' : '⏳ PAYMENT PENDING AT MILL'}
+                                </span>
+                                <h3 style={{ margin: '0.6rem 0 0.2rem 0', color: 'var(--accent-gold)', fontSize: '1.6rem' }}>
+                                    ₹{selectedPaymentForReceipt.total_amount?.toLocaleString('en-IN')}
+                                </h3>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    {selectedPaymentForReceipt.paid_at
+                                        ? `Paid on ${new Date(selectedPaymentForReceipt.paid_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`
+                                        : `Weighed on ${new Date(selectedPaymentForReceipt.received_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Enquiry Code:</span>
+                                <strong style={{ fontFamily: 'monospace' }}>{selectedPaymentForReceipt.enquiry_code}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Purchaser Mill:</span>
+                                <strong>{selectedPaymentForReceipt.mill_name}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Crop Delivered:</span>
+                                <strong style={{ color: 'var(--primary)' }}>{selectedPaymentForReceipt.crop_name}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Received Weight:</span>
+                                <strong>{selectedPaymentForReceipt.quantity_tonnes} Tonnes ({selectedPaymentForReceipt.quantity_quintals} Quintals)</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Agreed Rate:</span>
+                                <strong>₹{selectedPaymentForReceipt.price_per_quintal} / Quintal</strong>
+                            </div>
+                            {selectedPaymentForReceipt.payment_method && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Payment Method:</span>
+                                    <strong>{selectedPaymentForReceipt.payment_method}</strong>
+                                </div>
+                            )}
+                            {selectedPaymentForReceipt.transaction_reference && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>UTR Reference:</span>
+                                    <strong style={{ fontFamily: 'monospace', color: 'var(--accent-gold)' }}>{selectedPaymentForReceipt.transaction_reference}</strong>
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+                            <button className="action-btn" onClick={() => window.print()} style={{ flex: 1, justifyContent: 'center' }}>
+                                <i className="fa-solid fa-print"></i> Print
+                            </button>
+                            <button className="primary-btn" onClick={() => setSelectedPaymentForReceipt(null)} style={{ flex: 1, justifyContent: 'center' }}>
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* MODAL: UPDATE FARMER BANK DETAILS */}
+            {/* ======================================================== */}
+            {isEditBankModalOpen && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }}>
+                    <div className="modal-content" style={{ maxWidth: '520px', width: '92%', background: '#0d1712', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '1.25rem', padding: '1.5rem', color: '#f0fdf4' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <i className="fa-solid fa-building-columns" style={{ color: 'var(--primary)', fontSize: '1.3rem' }}></i>
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Update Bank Account</h3>
+                            </div>
+                            <button className="action-btn text-btn" onClick={() => setIsEditBankModalOpen(false)} style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                                <i className="fa-solid fa-xmark" style={{ fontSize: '1.25rem' }}></i>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveBankDetails} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                                    Account Holder Name *
+                                </label>
+                                <div className="input-group">
+                                    <i className="fa-solid fa-user"></i>
+                                    <input
+                                        type="text"
+                                        value={editBankHolder}
+                                        onChange={(e) => setEditBankHolder(e.target.value)}
+                                        required
+                                        style={{ background: 'transparent', width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                                    Bank Name *
+                                </label>
+                                <div className="input-group">
+                                    <i className="fa-solid fa-building-columns"></i>
+                                    <input
+                                        type="text"
+                                        value={editBankName}
+                                        onChange={(e) => setEditBankName(e.target.value)}
+                                        required
+                                        style={{ background: 'transparent', width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                                        Account Number *
+                                    </label>
+                                    <div className="input-group">
+                                        <i className="fa-solid fa-credit-card"></i>
+                                        <input
+                                            type="text"
+                                            value={editBankAccount}
+                                            onChange={(e) => setEditBankAccount(e.target.value)}
+                                            required
+                                            style={{ background: 'transparent', width: '100%', fontFamily: 'monospace' }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                                        IFSC Code *
+                                    </label>
+                                    <div className="input-group">
+                                        <i className="fa-solid fa-code"></i>
+                                        <input
+                                            type="text"
+                                            value={editBankIfsc}
+                                            onChange={(e) => setEditBankIfsc(e.target.value.toUpperCase())}
+                                            required
+                                            style={{ background: 'transparent', width: '100%', fontFamily: 'monospace' }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                                    UPI ID (For Instant Phone Transfers)
+                                </label>
+                                <div className="input-group">
+                                    <i className="fa-solid fa-mobile-screen"></i>
+                                    <input
+                                        type="text"
+                                        value={editBankUpi}
+                                        onChange={(e) => setEditBankUpi(e.target.value)}
+                                        placeholder="phone@upi"
+                                        style={{ background: 'transparent', width: '100%', fontFamily: 'monospace' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                                <button type="button" className="text-btn" onClick={() => setIsEditBankModalOpen(false)} style={{ flex: 1, justifyContent: 'center', padding: '0.8rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem' }}>
+                                    Cancel
+                                </button>
+                                <button type="submit" className="primary-btn" disabled={isSavingBank} style={{ flex: 1.5, justifyContent: 'center', padding: '0.8rem', fontWeight: 800 }}>
+                                    {isSavingBank ? 'Saving...' : 'Save Bank Details'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
         </div>
     );

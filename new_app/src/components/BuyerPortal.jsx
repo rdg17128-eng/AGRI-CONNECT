@@ -93,6 +93,24 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
     const [selectedEnquiryForQr, setSelectedEnquiryForQr] = useState(null);
     const [enquiryFilter, setEnquiryFilter] = useState('ALL'); // 'ALL' | 'PENDING' | 'ACCEPTED' | 'LOAD_RECEIVED'
 
+    // Payments & Loads States
+    const [paymentCategory, setPaymentCategory] = useState('ALL'); // 'ALL' | 'PENDING' | 'COMPLETED'
+    const [selectedEnquiryForLoadReceived, setSelectedEnquiryForLoadReceived] = useState(null);
+    const [actualReceivedTonnes, setActualReceivedTonnes] = useState('');
+    const [weighbridgeRemarks, setWeighbridgeRemarks] = useState('');
+    const [isSubmittingLoadReceived, setIsSubmittingLoadReceived] = useState(false);
+
+    // Make Payment States
+    const [selectedLoadForPayment, setSelectedLoadForPayment] = useState(null);
+    const [paymentMethod, setPaymentMethod] = useState('Bank Transfer (NEFT/RTGS)');
+    const [paymentReference, setPaymentReference] = useState('');
+    const [paymentRemarks, setPaymentRemarks] = useState('');
+    const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+
+    // View Receipt State
+    const [selectedLoadForReceipt, setSelectedLoadForReceipt] = useState(null);
+    const [copySuccessToast, setCopySuccessToast] = useState('');
+
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         
@@ -246,6 +264,84 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
         }
     };
 
+    const handleOpenLoadReceivedModal = (enquiry) => {
+        setSelectedEnquiryForLoadReceived(enquiry);
+        setActualReceivedTonnes(String(enquiry.quantity || (enquiry.acres ? enquiry.acres * 2 : 10)));
+        setWeighbridgeRemarks('');
+    };
+
+    const handleConfirmLoadReceived = async (e) => {
+        e.preventDefault();
+        if (!selectedEnquiryForLoadReceived) return;
+        if (!actualReceivedTonnes || Number(actualReceivedTonnes) <= 0) {
+            return alert("Please enter a valid actual tonnes received.");
+        }
+
+        setIsSubmittingLoadReceived(true);
+        try {
+            const targetMill = mills.find(m => m.id === selectedEnquiryForLoadReceived.mill_id) || activeMill;
+            await kisanService.recordLoadReceived(
+                selectedEnquiryForLoadReceived.enquiry_code || selectedEnquiryForLoadReceived.id,
+                Number(actualReceivedTonnes),
+                targetMill,
+                weighbridgeRemarks
+            );
+            setSelectedEnquiryForLoadReceived(null);
+            await refreshAllData();
+            setActiveTab('loads');
+            setPaymentCategory('PENDING');
+        } catch (err) {
+            console.error("Error confirming load received:", err);
+            alert("Failed to confirm load. Please try again.");
+        } finally {
+            setIsSubmittingLoadReceived(false);
+        }
+    };
+
+    const handleOpenMakePaymentModal = (load) => {
+        const farmerBank = kisanService.getFarmerBankDetails(load.farmer_phone || load.farmer_id);
+        setSelectedLoadForPayment({
+            ...load,
+            farmer_bank_details: farmerBank
+        });
+        setPaymentMethod('Bank Transfer (NEFT/RTGS)');
+        setPaymentReference('UTR-' + Math.floor(10000000 + Math.random() * 90000000));
+        setPaymentRemarks('Direct Produce Intake Settlement');
+    };
+
+    const handleConfirmPaymentCompleted = async (e) => {
+        e.preventDefault();
+        if (!selectedLoadForPayment) return;
+
+        setIsSubmittingPayment(true);
+        try {
+            await kisanService.completePayment(
+                selectedLoadForPayment.id || selectedLoadForPayment.enquiry_code,
+                {
+                    paymentMethod,
+                    referenceNumber: paymentReference || ('UTR-' + Date.now().toString().slice(-8)),
+                    remarks: paymentRemarks
+                },
+                activeMill
+            );
+            setSelectedLoadForPayment(null);
+            await refreshAllData();
+            setPaymentCategory('COMPLETED');
+        } catch (err) {
+            console.error("Error completing payment:", err);
+            alert("Failed to record payment completion.");
+        } finally {
+            setIsSubmittingPayment(false);
+        }
+    };
+
+    const handleCopyText = (text, label) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        setCopySuccessToast(`Copied ${label}!`);
+        setTimeout(() => setCopySuccessToast(''), 2500);
+    };
+
     const handleUpdateProfile = async () => {
         setIsSavingProfile(true);
         try {
@@ -325,11 +421,11 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                         <span style={{ color: 'var(--primary)', fontWeight: 700 }}>Scan Farmer QR</span>
                     </a>
                     <a className={`nav-item ${activeTab === 'loads' ? 'active' : ''}`} onClick={() => { setActiveTab('loads'); setIsSidebarOpen(false); }}>
-                        <i className="fa-solid fa-truck-ramp-box"></i>
-                        <span>Loads Received</span>
-                        {loadsReceived.length > 0 && (
-                            <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--accent-gold)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 800 }}>
-                                {loadsReceived.length}
+                        <i className="fa-solid fa-money-bill-transfer"></i>
+                        <span>Payments & Loads</span>
+                        {loadsReceived.filter(l => (l.payment_status || 'PENDING').toUpperCase() === 'PENDING').length > 0 && (
+                            <span className="nav-badge" style={{ marginLeft: 'auto', background: 'var(--accent-gold)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '1rem', fontSize: '0.72rem', fontWeight: 800 }}>
+                                {loadsReceived.filter(l => (l.payment_status || 'PENDING').toUpperCase() === 'PENDING').length} Pending
                             </span>
                         )}
                     </a>
@@ -764,15 +860,11 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                                                                 </button>
                                                                 <button 
                                                                     className="primary-btn" 
-                                                                    onClick={async () => {
-                                                                        const targetMill = mills.find(m => m.id === enq.mill_id) || activeMill;
-                                                                        await kisanService.acceptLoad(enq.enquiry_code || enq.id, targetMill);
-                                                                        await refreshAllData();
-                                                                    }}
+                                                                    onClick={() => handleOpenLoadReceivedModal(enq)}
                                                                     style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem' }}
                                                                 >
-                                                                    <i className="fa-solid fa-circle-check"></i>
-                                                                    Receive Load
+                                                                    <i className="fa-solid fa-truck-ramp-box"></i>
+                                                                    Load Received
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -792,86 +884,242 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                     )}
 
                     {/* ======================================================== */}
-                    {/* TAB: LOADS RECEIVED */}
                     {/* ======================================================== */}
-                    {activeTab === 'loads' && (
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-                                <div>
-                                    <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Loads Received & Verified 🚚</h2>
-                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
-                                        Complete audit log of all crops verified through digital QR scanning and accepted at gate
-                                    </p>
-                                </div>
-                                <button className="primary-btn" onClick={() => setIsQrScannerOpen(true)}>
-                                    <i className="fa-solid fa-qrcode"></i> Scan Another Load
-                                </button>
-                            </div>
+                    {/* TAB: PAYMENTS & LOADS */}
+                    {/* ======================================================== */}
+                    {activeTab === 'loads' && (() => {
+                        const pendingLoads = loadsReceived.filter(l => (l.payment_status || 'PENDING').toUpperCase() === 'PENDING');
+                        const completedLoads = loadsReceived.filter(l => (l.payment_status || 'PENDING').toUpperCase() === 'COMPLETED');
+                        
+                        const totalTonnes = loadsReceived.reduce((sum, l) => sum + (Number(l.quantity_tonnes || l.quantity) || 0), 0);
+                        const totalQuintals = loadsReceived.reduce((sum, l) => sum + (Number(l.quantity_quintals) || (Number(l.quantity_tonnes || l.quantity) * 10) || 0), 0);
+                        const totalPendingAmt = pendingLoads.reduce((sum, l) => sum + (Number(l.total_amount || l.price) || 0), 0);
+                        const totalCompletedAmt = completedLoads.reduce((sum, l) => sum + (Number(l.total_amount || l.price) || 0), 0);
 
-                            {loadsReceived.length === 0 ? (
-                                <div className="bento-card" style={{ textAlign: 'center', padding: '4rem 1rem' }}>
-                                    <i className="fa-solid fa-truck-ramp-box fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
-                                    <h3>No Loads Recorded Yet</h3>
-                                    <p style={{ color: 'var(--text-muted)', maxWidth: '450px', margin: '0.5rem auto 1.5rem' }}>
-                                        Once a farmer brings their harvest to the mill, scan their Crop Verification QR to authenticate and confirm receipt.
-                                    </p>
-                                    <button className="primary-btn" onClick={() => setIsQrScannerOpen(true)}>
-                                        Open QR Scanner
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="bento-card">
-                                    <div className="table-responsive">
-                                        <table className="orders-table" style={{ width: '100%', textAlign: 'left' }}>
-                                            <thead>
-                                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                    <th style={{ padding: '1rem' }}>Enquiry ID</th>
-                                                    <th style={{ padding: '1rem' }}>Farmer</th>
-                                                    <th style={{ padding: '1rem' }}>Crop & Quantity</th>
-                                                    <th style={{ padding: '1rem' }}>Acreage</th>
-                                                    <th style={{ padding: '1rem' }}>Transport Method</th>
-                                                    <th style={{ padding: '1rem' }}>Received At</th>
-                                                    <th style={{ padding: '1rem' }}>Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {loadsReceived.map(load => (
-                                                    <tr key={load.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                        <td style={{ padding: '1rem', fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)' }}>
-                                                            {load.enquiry_code}
-                                                        </td>
-                                                        <td style={{ padding: '1rem' }}>
-                                                            <strong>{load.farmer_name}</strong>
-                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{load.farmer_id}</div>
-                                                        </td>
-                                                        <td style={{ padding: '1rem' }}>
-                                                            <strong style={{ color: 'var(--primary)' }}>{load.crop_name}</strong>
-                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{load.quantity} Tons</div>
-                                                        </td>
-                                                        <td style={{ padding: '1rem' }}>
-                                                            {load.acres || '5'} Acres
-                                                        </td>
-                                                        <td style={{ padding: '1rem' }}>
-                                                            {load.transport_method}
-                                                        </td>
-                                                        <td style={{ padding: '1rem', fontSize: '0.85rem' }}>
-                                                            {new Date(load.received_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
-                                                        </td>
-                                                        <td style={{ padding: '1rem' }}>
-                                                            <span className="status-badge" style={{ background: 'rgba(16, 185, 129, 0.2)', color: 'var(--primary)', fontWeight: 700 }}>
-                                                                <i className="fa-solid fa-circle-check" style={{ marginRight: '0.3rem' }}></i>
-                                                                RECEIVED
-                                                            </span>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                        const displayedLoads = paymentCategory === 'PENDING'
+                            ? pendingLoads
+                            : paymentCategory === 'COMPLETED'
+                            ? completedLoads
+                            : loadsReceived;
+
+                        return (
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                                    <div>
+                                        <h2 style={{ margin: 0, fontSize: '1.6rem' }}>Payments & Loads 🚚💰</h2>
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                                            Record produce weighbridge intakes, automated quintal bills, and execute direct farmer payouts
+                                        </p>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                        <button className="action-btn" onClick={() => setActiveTab('enquiries')}>
+                                            <i className="fa-solid fa-inbox"></i> View Accepted Enquiries
+                                        </button>
+                                        <button className="primary-btn" onClick={() => setIsQrScannerOpen(true)}>
+                                            <i className="fa-solid fa-qrcode"></i> Scan Farmer QR
+                                        </button>
                                     </div>
                                 </div>
-                            )}
-                        </div>
-                    )}
+
+                                {/* Top Financial & Weight Metric Cards */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '1.75rem' }}>
+                                    <div className="bento-card" style={{ padding: '1.25rem' }}>
+                                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Total Weighed Produce</div>
+                                        <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fff', margin: '0.3rem 0' }}>
+                                            {totalTonnes.toFixed(1)} <span style={{ fontSize: '1rem', color: 'var(--primary)' }}>Tons</span>
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            {totalQuintals.toFixed(0)} Quintals across {loadsReceived.length} loads
+                                        </div>
+                                    </div>
+
+                                    <div className="bento-card" style={{ padding: '1.25rem', border: '1px solid rgba(234, 179, 8, 0.35)', background: 'rgba(234, 179, 8, 0.05)' }}>
+                                        <div style={{ fontSize: '0.78rem', color: '#fbbf24', textTransform: 'uppercase', fontWeight: 700 }}>Payment Pending</div>
+                                        <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fbbf24', margin: '0.3rem 0' }}>
+                                            ₹{totalPendingAmt.toLocaleString('en-IN')}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            {pendingLoads.length} farmer payment{pendingLoads.length !== 1 ? 's' : ''} awaiting payout
+                                        </div>
+                                    </div>
+
+                                    <div className="bento-card" style={{ padding: '1.25rem', border: '1px solid rgba(16, 185, 129, 0.35)', background: 'rgba(16, 185, 129, 0.05)' }}>
+                                        <div style={{ fontSize: '0.78rem', color: 'var(--primary)', textTransform: 'uppercase', fontWeight: 700 }}>Payment Completed</div>
+                                        <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)', margin: '0.3rem 0' }}>
+                                            ₹{totalCompletedAmt.toLocaleString('en-IN')}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            {completedLoads.length} load{completedLoads.length !== 1 ? 's' : ''} settled successfully
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Category Filters */}
+                                <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+                                    {[
+                                        { id: 'ALL', label: 'All Payments', count: loadsReceived.length },
+                                        { id: 'PENDING', label: 'Payment Pending', count: pendingLoads.length, badgeColor: '#fbbf24' },
+                                        { id: 'COMPLETED', label: 'Payment Completed', count: completedLoads.length, badgeColor: 'var(--primary)' }
+                                    ].map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            className={`action-btn ${paymentCategory === cat.id ? 'primary-btn' : ''}`}
+                                            onClick={() => setPaymentCategory(cat.id)}
+                                            style={{
+                                                padding: '0.6rem 1.1rem',
+                                                fontSize: '0.85rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem',
+                                                background: paymentCategory === cat.id ? 'var(--primary)' : 'rgba(255, 255, 255, 0.04)',
+                                                border: paymentCategory === cat.id ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                                                color: paymentCategory === cat.id ? '#000' : 'var(--text-main)',
+                                                fontWeight: paymentCategory === cat.id ? 800 : 500
+                                            }}
+                                        >
+                                            <span>{cat.label}</span>
+                                            <span style={{
+                                                background: paymentCategory === cat.id ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.1)',
+                                                color: paymentCategory === cat.id ? '#000' : cat.badgeColor || 'var(--text-muted)',
+                                                padding: '0.1rem 0.45rem',
+                                                borderRadius: '1rem',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 800
+                                            }}>
+                                                {cat.count}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {displayedLoads.length === 0 ? (
+                                    <div className="bento-card" style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+                                        <i className="fa-solid fa-receipt fa-3x" style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}></i>
+                                        <h3>No Loads in this Category</h3>
+                                        <p style={{ color: 'var(--text-muted)', maxWidth: '450px', margin: '0.5rem auto 1.5rem' }}>
+                                            {paymentCategory === 'PENDING'
+                                                ? 'All arrived loads have been paid! No pending payouts.'
+                                                : paymentCategory === 'COMPLETED'
+                                                ? 'No completed payments yet. Record loads and click Make Payment.'
+                                                : 'No loads recorded yet. When a farmer arrives, click Load Received or Scan Farmer QR.'}
+                                        </p>
+                                        <button className="primary-btn" onClick={() => setIsQrScannerOpen(true)}>
+                                            Open QR Scanner
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="bento-card" style={{ padding: 0, overflow: 'hidden' }}>
+                                        <div className="table-responsive">
+                                            <table className="orders-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                                                <thead>
+                                                    <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)' }}>
+                                                        <th style={{ padding: '1rem' }}>Enquiry Code</th>
+                                                        <th style={{ padding: '1rem' }}>Farmer</th>
+                                                        <th style={{ padding: '1rem' }}>Crop & Received Weight</th>
+                                                        <th style={{ padding: '1rem' }}>Agreed Rate</th>
+                                                        <th style={{ padding: '1rem' }}>Total Amount</th>
+                                                        <th style={{ padding: '1rem' }}>Status</th>
+                                                        <th style={{ padding: '1rem', textAlign: 'right' }}>Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {displayedLoads.map(load => {
+                                                        const isPending = (load.payment_status || 'PENDING').toUpperCase() === 'PENDING';
+                                                        const tonnes = Number(load.quantity_tonnes || load.quantity || 10);
+                                                        const quintals = Number(load.quantity_quintals || Math.round(tonnes * 10 * 10) / 10);
+                                                        const rate = Number(load.price_per_quintal || 2450);
+                                                        const total = Number(load.total_amount || load.price || (quintals * rate));
+
+                                                        return (
+                                                            <tr key={load.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <div style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                                                                        {load.enquiry_code}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                                                        {new Date(load.received_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                                                                    </div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <strong>{load.farmer_name}</strong>
+                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                                        {load.farmer_phone || load.farmer_id}
+                                                                    </div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <strong style={{ color: 'var(--primary)' }}>{load.crop_name}</strong>
+                                                                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                                                                        {tonnes} Tonnes <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({quintals} Qtl)</span>
+                                                                    </div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <strong style={{ color: 'var(--accent-gold)' }}>₹{rate.toLocaleString('en-IN')}</strong>
+                                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>per Quintal</div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    <strong style={{ fontSize: '1.05rem', color: isPending ? '#fbbf24' : 'var(--primary)' }}>
+                                                                        ₹{total.toLocaleString('en-IN')}
+                                                                    </strong>
+                                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                                        {quintals} Qtl × ₹{rate}
+                                                                    </div>
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem' }}>
+                                                                    {isPending ? (
+                                                                        <span className="status-badge" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#fbbf24', border: '1px solid rgba(234, 179, 8, 0.3)', padding: '0.3rem 0.6rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem' }}>
+                                                                            <i className="fa-solid fa-clock" style={{ marginRight: '0.3rem' }}></i>
+                                                                            PAYMENT PENDING
+                                                                        </span>
+                                                                    ) : (
+                                                                        <div>
+                                                                            <span className="status-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.3rem 0.6rem', fontSize: '0.75rem', fontWeight: 700, borderRadius: '0.4rem' }}>
+                                                                                <i className="fa-solid fa-circle-check" style={{ marginRight: '0.3rem' }}></i>
+                                                                                COMPLETED
+                                                                            </span>
+                                                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem', fontFamily: 'monospace' }}>
+                                                                                {load.transaction_reference}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+
+                                                                <td style={{ padding: '1rem', textAlign: 'right' }}>
+                                                                    {isPending ? (
+                                                                        <button
+                                                                            className="primary-btn"
+                                                                            onClick={() => handleOpenMakePaymentModal(load)}
+                                                                            style={{ padding: '0.55rem 1rem', fontSize: '0.85rem', fontWeight: 800 }}
+                                                                        >
+                                                                            <i className="fa-solid fa-money-bill-wave"></i>
+                                                                            Make Payment
+                                                                        </button>
+                                                                    ) : (
+                                                                        <button
+                                                                            className="action-btn"
+                                                                            onClick={() => setSelectedLoadForReceipt(load)}
+                                                                            style={{ padding: '0.55rem 0.9rem', fontSize: '0.85rem' }}
+                                                                        >
+                                                                            <i className="fa-solid fa-receipt"></i>
+                                                                            View Receipt
+                                                                        </button>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {/* ======================================================== */}
                     {/* TAB: TRANSPORT FLEET */}
@@ -1210,6 +1458,366 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                     enquiry={selectedEnquiryForQr}
                     onClose={() => setSelectedEnquiryForQr(null)}
                 />
+            )}
+
+            {/* ======================================================== */}
+            {/* MODAL 1: RECORD LOAD RECEIVED (WEIGHBRIDGE INTAKE) */}
+            {/* ======================================================== */}
+            {selectedEnquiryForLoadReceived && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }}>
+                    <div className="modal-content" style={{ maxWidth: '540px', width: '92%', background: '#0d1712', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '1.25rem', padding: '1.5rem', color: '#f0fdf4' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <i className="fa-solid fa-truck-ramp-box" style={{ color: 'var(--primary)', fontSize: '1.3rem' }}></i>
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Confirm Load Received</h3>
+                            </div>
+                            <button className="action-btn text-btn" onClick={() => setSelectedEnquiryForLoadReceived(null)} style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                                <i className="fa-solid fa-xmark" style={{ fontSize: '1.25rem' }}></i>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleConfirmLoadReceived} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {/* Enquiry Details Card */}
+                            <div style={{ background: 'rgba(0,0,0,0.35)', padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Enquiry Code:</span>
+                                    <strong style={{ fontFamily: 'monospace', color: 'var(--accent-gold)' }}>{selectedEnquiryForLoadReceived.enquiry_code}</strong>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Farmer:</span>
+                                    <strong>{selectedEnquiryForLoadReceived.farmer_name} ({selectedEnquiryForLoadReceived.farmer_phone})</strong>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Crop:</span>
+                                    <strong style={{ color: 'var(--primary)' }}>{selectedEnquiryForLoadReceived.crop_name}</strong>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Agreed Price:</span>
+                                    <strong style={{ color: 'var(--accent-gold)' }}>₹{selectedEnquiryForLoadReceived.offered_price || selectedEnquiryForLoadReceived.expected_price || 2450} / Quintal</strong>
+                                </div>
+                            </div>
+
+                            {/* Actual Tonnes Input */}
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
+                                    Actual Tonnes Received (Weighbridge Slip Weight) *
+                                </label>
+                                <div className="input-group">
+                                    <i className="fa-solid fa-scale-balanced" style={{ color: 'var(--primary)' }}></i>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0.1"
+                                        value={actualReceivedTonnes}
+                                        onChange={(e) => setActualReceivedTonnes(e.target.value)}
+                                        placeholder="Enter actual tonnes (e.g. 12.5)"
+                                        required
+                                        style={{ background: 'transparent', width: '100%', fontSize: '1rem', fontWeight: 700 }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Live Automated Calculation Display */}
+                            {(() => {
+                                const tonnes = Number(actualReceivedTonnes) || 0;
+                                const quintals = Math.round(tonnes * 10 * 10) / 10;
+                                const rate = Number(selectedEnquiryForLoadReceived.offered_price || selectedEnquiryForLoadReceived.expected_price || 2450);
+                                const total = Math.round(quintals * rate);
+
+                                return (
+                                    <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '0.75rem', padding: '1rem', fontSize: '0.85rem' }}>
+                                        <div style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            <i className="fa-solid fa-calculator"></i> Automated Bill Calculation
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>Automated Quintals Conversion (1 Ton = 10 Qtl):</span>
+                                            <strong>{quintals} Quintals</strong>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>Calculation Breakdown:</span>
+                                            <span>{quintals} Qtl × ₹{rate} / Qtl</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.15)', paddingTop: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
+                                            <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>Total Payable Amount:</span>
+                                            <strong style={{ fontSize: '1.25rem', color: 'var(--accent-gold)' }}>₹{total.toLocaleString('en-IN')}</strong>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Remarks */}
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.4rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
+                                    Weighbridge Slip No. / Quality Remarks (Optional)
+                                </label>
+                                <div className="input-group">
+                                    <i className="fa-solid fa-clipboard-check"></i>
+                                    <input
+                                        type="text"
+                                        value={weighbridgeRemarks}
+                                        onChange={(e) => setWeighbridgeRemarks(e.target.value)}
+                                        placeholder="e.g. Moisture 12.5%, Grade A, Slip #WB-881"
+                                        style={{ background: 'transparent', width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                                <button type="button" className="text-btn" onClick={() => setSelectedEnquiryForLoadReceived(null)} style={{ flex: 1, justifyContent: 'center', padding: '0.8rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem' }}>
+                                    Cancel
+                                </button>
+                                <button type="submit" className="primary-btn" disabled={isSubmittingLoadReceived} style={{ flex: 1.5, justifyContent: 'center', padding: '0.8rem', fontWeight: 800 }}>
+                                    {isSubmittingLoadReceived ? 'Recording Load...' : 'Confirm Load Received'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* MODAL 2: MAKE PAYMENT MODAL (WITH FARMER BANK DETAILS) */}
+            {/* ======================================================== */}
+            {selectedLoadForPayment && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }}>
+                    <div className="modal-content" style={{ maxWidth: '580px', width: '92%', background: '#0d1712', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '1.25rem', padding: '1.5rem', color: '#f0fdf4' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <i className="fa-solid fa-money-bill-wave" style={{ color: 'var(--primary)', fontSize: '1.3rem' }}></i>
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Make Farmer Direct Payment</h3>
+                            </div>
+                            <button className="action-btn text-btn" onClick={() => setSelectedLoadForPayment(null)} style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                                <i className="fa-solid fa-xmark" style={{ fontSize: '1.25rem' }}></i>
+                            </button>
+                        </div>
+
+                        {copySuccessToast && (
+                            <div style={{ background: 'var(--primary)', color: '#000', padding: '0.4rem 0.8rem', borderRadius: '0.4rem', fontSize: '0.8rem', fontWeight: 700, textAlign: 'center', marginBottom: '0.75rem' }}>
+                                <i className="fa-solid fa-check-circle" style={{ marginRight: '0.3rem' }}></i>
+                                {copySuccessToast}
+                            </div>
+                        )}
+
+                        <form onSubmit={handleConfirmPaymentCompleted} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {/* Amount Highlight Card */}
+                            <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(245, 158, 11, 0.12))', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '0.75rem', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Total Payable Amount</span>
+                                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-gold)' }}>
+                                        ₹{selectedLoadForPayment.total_amount?.toLocaleString('en-IN')}
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                        {selectedLoadForPayment.crop_name} • {selectedLoadForPayment.quantity_tonnes} Tons ({selectedLoadForPayment.quantity_quintals} Qtl)
+                                    </div>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Agreed Rate</span>
+                                    <strong style={{ color: '#fff', fontSize: '1.05rem' }}>₹{selectedLoadForPayment.price_per_quintal} / Qtl</strong>
+                                </div>
+                            </div>
+
+                            {/* Farmer's Bank Account Details Box */}
+                            <div style={{ background: 'rgba(0,0,0,0.4)', borderRadius: '0.75rem', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '1rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem' }}>
+                                    <span style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                        <i className="fa-solid fa-building-columns"></i>
+                                        Farmer Bank Details (For Transfer)
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                        {selectedLoadForPayment.farmer_name}
+                                    </span>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.85rem' }}>
+                                    <div>
+                                        <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Account Holder</span>
+                                        <strong>{selectedLoadForPayment.farmer_bank_details?.accountHolder || selectedLoadForPayment.farmer_name}</strong>
+                                    </div>
+
+                                    <div>
+                                        <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Bank Name</span>
+                                        <strong>{selectedLoadForPayment.farmer_bank_details?.bankName || 'State Bank of India'}</strong>
+                                    </div>
+
+                                    <div>
+                                        <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>Account Number</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            <strong style={{ fontFamily: 'monospace', color: '#fff' }}>
+                                                {selectedLoadForPayment.farmer_bank_details?.accountNumber || '308912445892'}
+                                            </strong>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCopyText(selectedLoadForPayment.farmer_bank_details?.accountNumber || '308912445892', 'Account Number')}
+                                                style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.85rem' }}
+                                                title="Copy Account Number"
+                                            >
+                                                <i className="fa-solid fa-copy"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem' }}>IFSC Code</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            <strong style={{ fontFamily: 'monospace', color: '#fff' }}>
+                                                {selectedLoadForPayment.farmer_bank_details?.ifscCode || 'SBIN0004521'}
+                                            </strong>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCopyText(selectedLoadForPayment.farmer_bank_details?.ifscCode || 'SBIN0004521', 'IFSC Code')}
+                                                style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.85rem' }}
+                                                title="Copy IFSC Code"
+                                            >
+                                                <i className="fa-solid fa-copy"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ gridColumn: 'span 2', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem' }}>UPI ID (Instant Pay)</span>
+                                            <strong style={{ fontFamily: 'monospace', color: 'var(--accent-gold)' }}>
+                                                {selectedLoadForPayment.farmer_bank_details?.upiId || `${selectedLoadForPayment.farmer_phone}@upi`}
+                                            </strong>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleCopyText(selectedLoadForPayment.farmer_bank_details?.upiId || `${selectedLoadForPayment.farmer_phone}@upi`, 'UPI ID')}
+                                            className="action-btn"
+                                            style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+                                        >
+                                            <i className="fa-solid fa-copy"></i> Copy UPI
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Payment Method & UTR Reference Fields */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                                        Payment Method
+                                    </label>
+                                    <div className="input-group">
+                                        <i className="fa-solid fa-credit-card"></i>
+                                        <select
+                                            value={paymentMethod}
+                                            onChange={(e) => setPaymentMethod(e.target.value)}
+                                            style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', outline: 'none' }}
+                                        >
+                                            <option value="Bank Transfer (NEFT/RTGS)" style={{ color: '#000' }}>Bank Transfer (NEFT/RTGS)</option>
+                                            <option value="UPI Transfer" style={{ color: '#000' }}>UPI Transfer</option>
+                                            <option value="IMPS Immediate Payment" style={{ color: '#000' }}>IMPS Immediate</option>
+                                            <option value="Mandi Settlement / Cash" style={{ color: '#000' }}>Mandi Cash Settlement</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                                        Transaction / UTR Reference No. *
+                                    </label>
+                                    <div className="input-group">
+                                        <i className="fa-solid fa-receipt"></i>
+                                        <input
+                                            type="text"
+                                            value={paymentReference}
+                                            onChange={(e) => setPaymentReference(e.target.value)}
+                                            placeholder="UTR-XXXX-XXXX"
+                                            required
+                                            style={{ background: 'transparent', width: '100%', fontFamily: 'monospace' }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                                <button type="button" className="text-btn" onClick={() => setSelectedLoadForPayment(null)} style={{ flex: 1, justifyContent: 'center', padding: '0.85rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem' }}>
+                                    Cancel
+                                </button>
+                                <button type="submit" className="primary-btn" disabled={isSubmittingPayment} style={{ flex: 1.5, justifyContent: 'center', padding: '0.85rem', fontWeight: 800 }}>
+                                    <i className="fa-solid fa-circle-check"></i>
+                                    {isSubmittingPayment ? 'Updating Status...' : 'Payment Completed'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* MODAL 3: VIEW PAYMENT RECEIPT */}
+            {/* ======================================================== */}
+            {selectedLoadForReceipt && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }}>
+                    <div className="modal-content" style={{ maxWidth: '520px', width: '92%', background: '#0d1712', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '1.25rem', padding: '1.75rem', color: '#f0fdf4' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <i className="fa-solid fa-receipt" style={{ color: 'var(--primary)', fontSize: '1.3rem' }}></i>
+                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Produce Intake Payment Receipt</h3>
+                            </div>
+                            <button className="action-btn text-btn" onClick={() => setSelectedLoadForReceipt(null)} style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                                <i className="fa-solid fa-xmark" style={{ fontSize: '1.25rem' }}></i>
+                            </button>
+                        </div>
+
+                        <div style={{ background: 'rgba(0,0,0,0.4)', borderRadius: '0.75rem', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.85rem' }}>
+                            <div style={{ textAlign: 'center', borderBottom: '1px dashed rgba(255,255,255,0.15)', paddingBottom: '0.75rem', marginBottom: '0.5rem' }}>
+                                <span className="status-badge" style={{ background: 'rgba(16, 185, 129, 0.2)', color: 'var(--primary)', fontWeight: 800, padding: '0.35rem 0.8rem', borderRadius: '1rem', fontSize: '0.8rem' }}>
+                                    ✓ SETTLEMENT COMPLETED
+                                </span>
+                                <h3 style={{ margin: '0.6rem 0 0.2rem 0', color: 'var(--accent-gold)' }}>
+                                    ₹{selectedLoadForReceipt.total_amount?.toLocaleString('en-IN')}
+                                </h3>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    Paid on {new Date(selectedLoadForReceipt.paid_at || selectedLoadForReceipt.received_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Enquiry Code:</span>
+                                <strong style={{ fontFamily: 'monospace' }}>{selectedLoadForReceipt.enquiry_code}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Farmer:</span>
+                                <strong>{selectedLoadForReceipt.farmer_name} ({selectedLoadForReceipt.farmer_phone})</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Purchaser Mill:</span>
+                                <strong>{selectedLoadForReceipt.mill_name}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Crop Received:</span>
+                                <strong style={{ color: 'var(--primary)' }}>{selectedLoadForReceipt.crop_name}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Weighed Quantity:</span>
+                                <strong>{selectedLoadForReceipt.quantity_tonnes} Tonnes ({selectedLoadForReceipt.quantity_quintals} Quintals)</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Rate per Quintal:</span>
+                                <strong>₹{selectedLoadForReceipt.price_per_quintal} / Qtl</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Payment Method:</span>
+                                <strong>{selectedLoadForReceipt.payment_method || 'Direct Bank Transfer'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>UTR Reference:</span>
+                                <strong style={{ fontFamily: 'monospace', color: 'var(--accent-gold)' }}>{selectedLoadForReceipt.transaction_reference}</strong>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+                            <button className="action-btn" onClick={() => window.print()} style={{ flex: 1, justifyContent: 'center' }}>
+                                <i className="fa-solid fa-print"></i> Print
+                            </button>
+                            <button className="primary-btn" onClick={() => setSelectedLoadForReceipt(null)} style={{ flex: 1, justifyContent: 'center' }}>
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
