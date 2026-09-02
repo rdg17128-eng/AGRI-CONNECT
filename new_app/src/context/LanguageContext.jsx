@@ -3,11 +3,26 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 const LanguageContext = createContext();
 
 export const LANGUAGES = [
-    { code: 'en', name: 'English', native: 'English', flag: '🇬🇧' },
-    { code: 'te', name: 'Telugu', native: 'తెలుగు', flag: '🌾' },
-    { code: 'hi', name: 'Hindi', native: 'हिन्दी', flag: '🇮🇳' },
-    { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ', flag: '🌱' },
-    { code: 'ta', name: 'Tamil', native: 'தமிழ்', flag: '🌴' }
+    { code: 'en', name: 'English', native: 'English', region: 'All India', flag: '🇬🇧' },
+    { code: 'hi', name: 'Hindi', native: 'हिन्दी', region: 'North & Central India', flag: '🇮🇳' },
+    { code: 'te', name: 'Telugu', native: 'తెలుగు', region: 'Telangana & Andhra Pradesh', flag: '🌾' },
+    { code: 'ta', name: 'Tamil', native: 'தமிழ்', region: 'Tamil Nadu & Puducherry', flag: '🌴' },
+    { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ', region: 'Karnataka', flag: '🌱' },
+    { code: 'ml', name: 'Malayalam', native: 'മലയാളം', region: 'Kerala', flag: '🥥' },
+    { code: 'mr', name: 'Marathi', native: 'मराठी', region: 'Maharashtra', flag: '🚩' },
+    { code: 'gu', name: 'Gujarati', native: 'ગુજરાતી', region: 'Gujarat', flag: '🌻' },
+    { code: 'bn', name: 'Bengali', native: 'বাংলা', region: 'West Bengal & Tripura', flag: '🐟' },
+    { code: 'pa', name: 'Punjabi', native: 'ਪੰਜਾਬੀ', region: 'Punjab & Haryana', flag: '🚜' },
+    { code: 'or', name: 'Odia', native: 'ଓଡ଼ିଆ', region: 'Odisha', flag: '🌊' },
+    { code: 'as', name: 'Assamese', native: 'অসমীয়া', region: 'Assam & Northeast', flag: '🌿' },
+    { code: 'ur', name: 'Urdu', native: 'اردو', region: 'National', flag: '📜' },
+    { code: 'sa', name: 'Sanskrit', native: 'संस्कृतम्', region: 'Classical', flag: '🕉️' },
+    { code: 'mai', name: 'Maithili', native: 'मैथिली', region: 'Bihar & Jharkhand', flag: '🌾' },
+    { code: 'bho', name: 'Bhojpuri', native: 'भोजपुरी', region: 'UP & Bihar', flag: '🌽' },
+    { code: 'ne', name: 'Nepali', native: 'नेपाली', region: 'Sikkim & West Bengal', flag: '🏔️' },
+    { code: 'gom', name: 'Konkani', native: 'कोंकणी', region: 'Goa & Coastal Karnataka', flag: '🏖️' },
+    { code: 'sd', name: 'Sindhi', native: 'سنڌي', region: 'National', flag: '🏺' },
+    { code: 'doi', name: 'Dogri', native: 'डोगरी', region: 'Jammu & Kashmir', flag: '🍎' }
 ];
 
 export const TRANSLATIONS = {
