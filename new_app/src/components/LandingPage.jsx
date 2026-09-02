@@ -152,7 +152,7 @@ export default function LandingPage() {
                 </div>
 
                 <footer style={{ marginTop: '1.75rem', opacity: 0.6, fontSize: '0.75rem', textAlign: 'center' }}>
-                    <p>© 2026 KisanConnect Ecosystem • Built with React, Supabase & Leaflet</p>
+                    <p>© 2026 KisanConnect Ecosystem </p>
                 </footer>
             </div>
 

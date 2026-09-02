@@ -1,11 +1,13 @@
 [build]
-  command = "npm --prefix new_app run build"
+  command = "npm --prefix new_app install --include=dev && npm --prefix new_app run build"
   publish = "new_app/dist"
 
 [build.environment]
   NODE_VERSION = "20"
+  NPM_FLAGS = "--include=dev"
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+

@@ -2,7 +2,11 @@
   "name": "kisanconnect",
   "private": true,
   "version": "1.0.0",
+  "workspaces": [
+    "new_app"
+  ],
   "scripts": {
-    "build": "npm --prefix new_app run build"
+    "build": "npm --prefix new_app install --include=dev && npm --prefix new_app run build"
   }
 }
+
