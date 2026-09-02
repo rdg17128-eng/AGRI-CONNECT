@@ -33,8 +33,8 @@ export default function FarmerProfileView({
     const [confirmPin, setConfirmPin] = useState('');
     const [showPin, setShowPin] = useState(false);
 
-    // Global Language
-    const { language: globalLang, setLanguage: setGlobalLang } = useLanguage();
+    // Global Language & Translation
+    const { language: globalLang, setLanguage: setGlobalLang, t } = useLanguage();
 
     // Preferences & Alerts
     const [priceAlerts, setPriceAlerts] = useState(true);
@@ -303,15 +303,29 @@ export default function FarmerProfileView({
                     </div>
 
                     <div className="profile-stat-box">
+                        <div className="profile-stat-icon" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--primary)' }}>
+                            <i className="fa-solid fa-layer-group"></i>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                {t('Total Land Holding')}
+                            </div>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                                {totalAcres > 0 ? `${totalAcres} ${t('acres', 'Acres')}` : `0 ${t('acres', 'Acres')}`}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="profile-stat-box">
                         <div className="profile-stat-icon" style={{ background: 'rgba(197, 155, 78, 0.15)', color: 'var(--accent-gold)' }}>
                             <i className="fa-solid fa-boxes-stacked"></i>
                         </div>
                         <div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Registered Crops
+                                {t('Registered Crops')}
                             </div>
                             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                                {crops.length} Listed
+                                {crops.length} {t('active', 'Listed')}
                             </div>
                         </div>
                     </div>
@@ -322,10 +336,10 @@ export default function FarmerProfileView({
                         </div>
                         <div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Mill Enquiries
+                                {t('Mill Enquiries')}
                             </div>
                             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                                {enquiries.length} Active
+                                {enquiries.length} {t('active', 'Active')}
                             </div>
                         </div>
                     </div>
@@ -336,10 +350,10 @@ export default function FarmerProfileView({
                         </div>
                         <div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                KYC Status
+                                {t('KYC Status')}
                             </div>
                             <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-light)' }}>
-                                100% Verified
+                                100% {t('completed', 'Verified')}
                             </div>
                         </div>
                     </div>
@@ -355,28 +369,28 @@ export default function FarmerProfileView({
                     onClick={() => setSubTab('general')}
                 >
                     <i className="fa-solid fa-user"></i>
-                    Farm & Personal Info
+                    {t('Farm & Personal Info')}
                 </button>
                 <button 
                     className={`profile-nav-pill ${subTab === 'payout' ? 'active' : ''}`}
                     onClick={() => setSubTab('payout')}
                 >
                     <i className="fa-solid fa-building-columns"></i>
-                    Direct Payout & Bank
+                    {t('Direct Payout & Bank')}
                 </button>
                 <button 
                     className={`profile-nav-pill ${subTab === 'security' ? 'active' : ''}`}
                     onClick={() => setSubTab('security')}
                 >
                     <i className="fa-solid fa-shield-halved"></i>
-                    Security & PIN
+                    {t('Security & PIN')}
                 </button>
                 <button 
                     className={`profile-nav-pill ${subTab === 'preferences' ? 'active' : ''}`}
                     onClick={() => setSubTab('preferences')}
                 >
                     <i className="fa-solid fa-bell"></i>
-                    Alerts & Language
+                    {t('Alerts & Language')}
                 </button>
             </div>
 
@@ -388,7 +402,7 @@ export default function FarmerProfileView({
             {subTab === 'general' && (
                 <div className="bento-card" style={{ padding: '2rem' }}>
                     <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-                        <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Personal & Agricultural Details</h3>
+                        <h3 style={{ margin: 0, fontSize: '1.25rem' }}>{t('Personal & Agricultural Details')}</h3>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
                             Update your farmer identity and location details displayed to verified mill buyers.
                         </p>
@@ -400,7 +414,7 @@ export default function FarmerProfileView({
                             <div className="form-group-modern">
                                 <label>
                                     <i className="fa-solid fa-user" style={{ color: 'var(--primary)' }}></i>
-                                    Full Name
+                                    {t('Full Name')}
                                 </label>
                                 <div className="input-with-icon">
                                     <i className="fa-solid fa-user field-icon"></i>
@@ -417,7 +431,7 @@ export default function FarmerProfileView({
                             <div className="form-group-modern">
                                 <label>
                                     <i className="fa-solid fa-phone" style={{ color: 'var(--primary)' }}></i>
-                                    Primary Phone (Registered)
+                                    {t('Primary Phone (Registered)')}
                                 </label>
                                 <div className="input-with-icon">
                                     <i className="fa-solid fa-lock field-icon"></i>
@@ -433,7 +447,7 @@ export default function FarmerProfileView({
                             <div className="form-group-modern">
                                 <label>
                                     <i className="fa-brands fa-whatsapp" style={{ color: '#25D366' }}></i>
-                                    WhatsApp / Alternate Phone
+                                    {t('WhatsApp / Alternate Phone')}
                                 </label>
                                 <div className="input-with-icon">
                                     <i className="fa-solid fa-phone field-icon"></i>
@@ -523,7 +537,7 @@ export default function FarmerProfileView({
                                 style={{ minWidth: '180px', justifyContent: 'center' }}
                             >
                                 <i className="fa-solid fa-floppy-disk"></i>
-                                {isSaving ? 'Saving Changes...' : 'Save Profile Changes'}
+                                {isSaving ? t('save', 'Saving...') : t('Save Profile Changes')}
                             </button>
                         </div>
                     </form>
