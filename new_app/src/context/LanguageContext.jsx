@@ -6,7 +6,8 @@ export const LANGUAGES = [
     { code: 'en', name: 'English', native: 'English', flag: '🇬🇧' },
     { code: 'te', name: 'Telugu', native: 'తెలుగు', flag: '🌾' },
     { code: 'hi', name: 'Hindi', native: 'हिन्दी', flag: '🇮🇳' },
-    { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ', flag: '🌱' }
+    { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ', flag: '🌱' },
+    { code: 'ta', name: 'Tamil', native: 'தமிழ்', flag: '🌴' }
 ];
 
 export const TRANSLATIONS = {
@@ -770,11 +771,50 @@ export function LanguageProvider({ children }) {
         setLanguageState(langCode);
         try {
             localStorage.setItem('kisan_language', langCode);
+
+            // Sync with Google Translate engine
+            const domain = window.location.hostname;
+            document.cookie = `googtrans=/en/${langCode}; path=/;`;
+            if (domain && domain !== 'localhost' && !domain.includes('127.0.0.1')) {
+                document.cookie = `googtrans=/en/${langCode}; path=/; domain=.${domain};`;
+            }
+
+            const triggerGoogleCombo = () => {
+                const combo = document.querySelector('.goog-te-combo');
+                if (combo) {
+                    combo.value = langCode;
+                    combo.dispatchEvent(new Event('change'));
+                }
+            };
+            triggerGoogleCombo();
+            setTimeout(triggerGoogleCombo, 100);
+            setTimeout(triggerGoogleCombo, 350);
+
             window.dispatchEvent(new CustomEvent('kisan_language_changed', { detail: langCode }));
         } catch (e) {
             console.warn('Could not save language to localStorage:', e);
         }
     };
+
+    // Restore language on initial page load / refresh
+    useEffect(() => {
+        const saved = localStorage.getItem('kisan_language');
+        if (saved && saved !== 'en') {
+            document.cookie = `googtrans=/en/${saved}; path=/;`;
+            let attempts = 0;
+            const checkCombo = setInterval(() => {
+                attempts++;
+                const combo = document.querySelector('.goog-te-combo');
+                if (combo) {
+                    combo.value = saved;
+                    combo.dispatchEvent(new Event('change'));
+                    clearInterval(checkCombo);
+                } else if (attempts > 15) {
+                    clearInterval(checkCombo);
+                }
+            }, 250);
+        }
+    }, []);
 
     useEffect(() => {
         const handleLangChange = (e) => {
