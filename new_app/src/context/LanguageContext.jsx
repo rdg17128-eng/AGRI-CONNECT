@@ -734,6 +734,29 @@ const EXTRA_PHRASES = {
 };
 Object.assign(STRING_MAP, EXTRA_PHRASES);
 
+
+// Build a bidirectional canonical map so any phrase in English, Telugu, Hindi, or Kannada can map to any other language
+export const CANONICAL_MAP = {};
+
+Object.keys(TRANSLATIONS.en).forEach(key => {
+    ['en', 'te', 'hi', 'kn'].forEach(lang => {
+        const text = TRANSLATIONS[lang]?.[key];
+        if (text && typeof text === 'string') {
+            CANONICAL_MAP[text.trim()] = key;
+        }
+    });
+});
+
+Object.keys(EXTRA_PHRASES).forEach(enText => {
+    CANONICAL_MAP[enText.trim()] = enText.trim();
+    ['te', 'hi', 'kn'].forEach(lang => {
+        const text = EXTRA_PHRASES[enText]?.[lang];
+        if (text && typeof text === 'string') {
+            CANONICAL_MAP[text.trim()] = enText.trim();
+        }
+    });
+});
+
 export function LanguageProvider({ children }) {
     const [language, setLanguageState] = useState(() => {
         try {
@@ -763,26 +786,31 @@ export function LanguageProvider({ children }) {
         return () => window.removeEventListener('kisan_language_changed', handleLangChange);
     }, [language]);
 
-    // Intelligent translation helper:
-    // 1. Checks if key exists in dictionary for current language.
-    // 2. If key itself is an English string, checks STRING_MAP.
-    // 3. Fallback to English string.
+    // Intelligent bidirectional translation helper:
     const t = (keyOrText, fallback = '') => {
         if (!keyOrText) return '';
         const trimmed = typeof keyOrText === 'string' ? keyOrText.trim() : '';
 
-        // Check token in active dictionary
+        // 1. Direct key match in active dictionary
         const langDict = TRANSLATIONS[language] || TRANSLATIONS.en;
         if (langDict && langDict[keyOrText] !== undefined) {
             return langDict[keyOrText];
         }
 
-        // Check if the input itself is an English string in STRING_MAP
+        // 2. Canonical lookup from any language to target language
+        const canonicalKey = CANONICAL_MAP[trimmed];
+        if (canonicalKey) {
+            const translated = TRANSLATIONS[language]?.[canonicalKey] || EXTRA_PHRASES[canonicalKey]?.[language];
+            if (translated) return translated;
+            if (language === 'en') return canonicalKey;
+        }
+
+        // 3. Check STRING_MAP
         if (STRING_MAP[trimmed] && STRING_MAP[trimmed][language]) {
             return STRING_MAP[trimmed][language];
         }
 
-        // Default to English dictionary or fallback
+        // 4. Default to English dictionary or fallback
         const defaultDict = TRANSLATIONS.en;
         if (defaultDict[keyOrText] !== undefined) {
             return defaultDict[keyOrText];
@@ -791,12 +819,11 @@ export function LanguageProvider({ children }) {
         return fallback || keyOrText;
     };
 
-    // Safe DOM Text Translator for any lingering text nodes
+    // Safe Bidirectional DOM Text & Placeholder Translator
     useEffect(() => {
-        if (language === 'en') return;
-
         const translateDom = () => {
             try {
+                // 1. Text nodes
                 const walker = document.createTreeWalker(
                     document.body,
                     NodeFilter.SHOW_TEXT,
@@ -804,7 +831,7 @@ export function LanguageProvider({ children }) {
                         acceptNode: (node) => {
                             if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
                             const text = node.nodeValue.trim();
-                            if (text.length > 1 && STRING_MAP[text]) {
+                            if (text.length > 0 && (CANONICAL_MAP[text] || STRING_MAP[text])) {
                                 return NodeFilter.FILTER_ACCEPT;
                             }
                             return NodeFilter.FILTER_SKIP;
@@ -819,20 +846,42 @@ export function LanguageProvider({ children }) {
 
                 nodesToReplace.forEach(node => {
                     const text = node.nodeValue.trim();
-                    if (STRING_MAP[text] && STRING_MAP[text][language]) {
+                    const key = CANONICAL_MAP[text];
+                    if (key) {
+                        const targetText = TRANSLATIONS[language]?.[key] || EXTRA_PHRASES[key]?.[language] || (language === 'en' ? key : null);
+                        if (targetText && targetText !== text) {
+                            node.nodeValue = node.nodeValue.replace(text, targetText);
+                        }
+                    } else if (STRING_MAP[text] && STRING_MAP[text][language]) {
                         node.nodeValue = node.nodeValue.replace(text, STRING_MAP[text][language]);
                     }
                 });
+
+                // 2. Input placeholders
+                document.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(el => {
+                    const ph = el.placeholder.trim();
+                    const key = CANONICAL_MAP[ph];
+                    if (key) {
+                        const targetText = TRANSLATIONS[language]?.[key] || EXTRA_PHRASES[key]?.[language] || (language === 'en' ? key : null);
+                        if (targetText && targetText !== ph) {
+                            el.placeholder = targetText;
+                        }
+                    }
+                });
             } catch (err) {
-                // Silently ignore any DOM walker edge cases
+                // Silently ignore transient DOM exceptions
             }
         };
 
-        const timer = setTimeout(translateDom, 100);
-        const interval = setInterval(translateDom, 1200);
+        // Run immediately, then at 50ms, 250ms, and keep active
+        translateDom();
+        const t1 = setTimeout(translateDom, 50);
+        const t2 = setTimeout(translateDom, 250);
+        const interval = setInterval(translateDom, 800);
 
         return () => {
-            clearTimeout(timer);
+            clearTimeout(t1);
+            clearTimeout(t2);
             clearInterval(interval);
         };
     }, [language]);

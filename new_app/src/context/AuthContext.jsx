@@ -5,9 +5,22 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
     const [session, setSession] = useState(null);
-    const [user, setUser] = useState(null);
-    const [role, setRole] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(() => {
+        try {
+            const saved = localStorage.getItem('kisan_active_user');
+            return saved ? JSON.parse(saved) : null;
+        } catch {
+            return null;
+        }
+    });
+    const [role, setRole] = useState(() => {
+        try {
+            return localStorage.getItem('kisan_active_role') || null;
+        } catch {
+            return null;
+        }
+    });
+    const [loading, setLoading] = useState(false);
     const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
     const [googleUser, setGoogleUser] = useState(null);
 
@@ -134,6 +147,12 @@ export function AuthProvider({ children }) {
             setRole(userRole);
             setNeedsRoleSelection(false);
             setGoogleUser(null);
+            try {
+                localStorage.setItem('kisan_active_user', JSON.stringify(finalUser));
+                localStorage.setItem('kisan_active_role', userRole);
+            } catch (e) {
+                console.warn('Could not persist final user session:', e);
+            }
         } else {
             // Only if absolutely no role could be inferred, show role selection
             setGoogleUser(sbUser);
@@ -165,13 +184,8 @@ export function AuthProvider({ children }) {
             if (event === 'SIGNED_IN' && newSession?.user) {
                 await processSupabaseUser(newSession.user);
             } else if (event === 'SIGNED_OUT') {
-                setUser(null);
-                setRole(null);
-                setNeedsRoleSelection(false);
+                setSession(null);
                 setGoogleUser(null);
-                localStorage.removeItem('kisan_active_tab');
-                localStorage.removeItem('agri_active_tab');
-                localStorage.removeItem('kisan_intended_role');
             }
         });
 
@@ -263,6 +277,12 @@ export function AuthProvider({ children }) {
     const loginWithPhone = useCallback((userData, userRole) => {
         setUser(userData);
         setRole(userRole);
+        try {
+            localStorage.setItem('kisan_active_user', JSON.stringify(userData));
+            localStorage.setItem('kisan_active_role', userRole);
+        } catch (e) {
+            console.warn('Could not persist phone user session:', e);
+        }
     }, []);
 
     // Explicit Logout
@@ -276,9 +296,15 @@ export function AuthProvider({ children }) {
         setRole(null);
         setNeedsRoleSelection(false);
         setGoogleUser(null);
-        localStorage.removeItem('kisan_active_tab');
-        localStorage.removeItem('agri_active_tab');
-        localStorage.removeItem('kisan_intended_role');
+        try {
+            localStorage.removeItem('kisan_active_user');
+            localStorage.removeItem('kisan_active_role');
+            localStorage.removeItem('kisan_active_tab');
+            localStorage.removeItem('agri_active_tab');
+            localStorage.removeItem('kisan_intended_role');
+        } catch (e) {
+            console.warn('Could not clear user storage:', e);
+        }
     }, []);
 
     return (
