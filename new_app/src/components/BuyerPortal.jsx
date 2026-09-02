@@ -450,10 +450,10 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                 </nav>
 
                 <div className="sidebar-bottom">
-                    <div style={{ padding: '0.8rem', background: 'rgba(16, 185, 129, 0.06)', borderRadius: '12px', marginBottom: '1rem', border: '1px solid var(--border-color)' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Authorized Facility</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 700 }}>{activeMill.millName}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>Buyer: {businessType}</div>
+                    <div style={{ padding: '0.4rem 0.6rem', background: 'rgba(16, 185, 129, 0.06)', borderRadius: '8px', marginBottom: '0.45rem', border: '1px solid var(--border-color)' }}>
+                        <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>Authorized Facility</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeMill.millName}</div>
+                        <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Buyer: {businessType}</div>
                     </div>
                     <a className="nav-item logout" onClick={handleLogout}>
                         <i className="fa-solid fa-arrow-right-from-bracket"></i>
