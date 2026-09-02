@@ -32,7 +32,7 @@ KisanConnect is structured around four distinct user portals, each custom-tailor
 * **Transport Fleet & Quotes:** Review haulage bids from verified logistics providers and assign vehicles in one click.
 * **Weather & Market Intelligence:** Location-specific forecast and live commodity rates.
 
-### 2. 🏭 Mill & Buyer Portal (*Source with Confidence & Precision*)
+### 2. 🏭 Mills Portal (*Source with Confidence & Precision*)
 * **Farmer Enquiries Inbox:** Real-time stream of incoming farmer supply proposals with distance and transport specs.
 * **Instant Acceptance & QR Generation:** Accept enquiries to auto-generate crop verification manifests.
 * **Camera-Based QR Scanner:** High-speed mobile and desktop camera scanner (powered by `html5-qrcode`) to authenticate arriving trucks:

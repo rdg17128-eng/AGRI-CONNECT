@@ -17,8 +17,8 @@ export default function LandingPage() {
             const dest = role === 'farmers'
                 ? '/farmer/dashboard'
                 : role === 'buyers'
-                ? '/buyer/dashboard'
-                : '/transport/dashboard';
+                    ? '/buyer/dashboard'
+                    : '/transport/dashboard';
             navigate(dest, { replace: true });
         } else if (user && !role && roleId) {
             // Auto-assign role from URL parameter
@@ -26,8 +26,8 @@ export default function LandingPage() {
                 const dest = roleId === 'farmers'
                     ? '/farmer/dashboard'
                     : roleId === 'buyers'
-                    ? '/buyer/dashboard'
-                    : '/transport/dashboard';
+                        ? '/buyer/dashboard'
+                        : '/transport/dashboard';
                 navigate(dest, { replace: true });
             });
         }
@@ -45,7 +45,7 @@ export default function LandingPage() {
         {
             id: 'buyers',
             icon: 'fa-industry',
-            title: 'Mill & Buyer',
+            title: 'Mills',
             subtitle: 'Grain Procurement',
             desc: 'Review farmer loads, scan gate QR codes, verify intake batches, and set mill prices.',
             route: '/buyer/dashboard'
@@ -69,8 +69,8 @@ export default function LandingPage() {
         const dest = authenticatedUser.role === 'farmers'
             ? '/farmer/dashboard'
             : authenticatedUser.role === 'buyers'
-            ? '/buyer/dashboard'
-            : '/transport/dashboard';
+                ? '/buyer/dashboard'
+                : '/transport/dashboard';
         navigate(dest);
     };
 

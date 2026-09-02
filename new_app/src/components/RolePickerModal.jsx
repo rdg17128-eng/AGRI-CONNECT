@@ -24,7 +24,7 @@ export default function RolePickerModal() {
             id: 'buyers',
             route: '/buyer/dashboard',
             icon: 'fa-industry',
-            title: 'Mill & Buyer',
+            title: 'Mill',
             subtitle: 'Direct Grain Intake',
             desc: 'Review farmer enquiries, scan gate QR codes, verify crop loads, and set mill prices.'
         },

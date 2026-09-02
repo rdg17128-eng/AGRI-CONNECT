@@ -10,14 +10,15 @@ const STORAGE_KEYS = {
     NOTIFICATIONS: 'kisan_notifications'
 };
 
-// Seed initial default transport providers if none exist
+// Seed initial default transport providers if none exist with rich testing data
 const DEFAULT_PROVIDERS = [
     {
         phone: '9876500001',
         pin: '1234',
-        name: 'Kisan Gati Logistics',
+        name: 'Ramesh Yadav (Kisan Gati Logistics)',
+        driver_name: 'Ramesh Yadav',
         vehicle_number: 'TS 09 EA 4421',
-        vehicle_type: 'Truck',
+        vehicle_type: 'Standard Truck',
         capacity: 15,
         price_per_km: 42,
         rating: 4.9,
@@ -28,7 +29,8 @@ const DEFAULT_PROVIDERS = [
     {
         phone: '9876500002',
         pin: '1234',
-        name: 'Balaji Agro Freight',
+        name: 'Venkatesh Rao (Balaji Agro Freight)',
+        driver_name: 'Venkatesh Rao',
         vehicle_number: 'TS 08 UB 7712',
         vehicle_type: 'Mini Truck',
         capacity: 5,
@@ -41,9 +43,10 @@ const DEFAULT_PROVIDERS = [
     {
         phone: '9876500003',
         pin: '1234',
-        name: 'Annapurna Heavy Haulers',
+        name: 'Suresh Goud (Annapurna Heavy Haulers)',
+        driver_name: 'Suresh Goud',
         vehicle_number: 'AP 16 TZ 9980',
-        vehicle_type: 'Lorry',
+        vehicle_type: 'Heavy Lorry',
         capacity: 25,
         price_per_km: 65,
         rating: 5.0,
@@ -54,15 +57,100 @@ const DEFAULT_PROVIDERS = [
     {
         phone: '9876500004',
         pin: '1234',
-        name: 'Gramin Kisan Express',
+        name: 'Mahesh Reddy (Gramin Kisan Express)',
+        driver_name: 'Mahesh Reddy',
         vehicle_number: 'TS 07 TC 1109',
-        vehicle_type: 'Truck',
+        vehicle_type: 'Standard Truck',
         capacity: 10,
         price_per_km: 35,
         rating: 4.7,
         availability: 'AVAILABLE',
         current_location_name: 'Nizamabad Yard',
         service_area: 'Telangana State'
+    },
+    {
+        phone: '9876500005',
+        pin: '1234',
+        name: 'Chandra Shekar (Sri Lakshmi Transport)',
+        driver_name: 'Chandra Shekar',
+        vehicle_number: 'TS 12 AB 5566',
+        vehicle_type: 'Standard Truck',
+        capacity: 20,
+        price_per_km: 52,
+        rating: 4.9,
+        availability: 'AVAILABLE',
+        current_location_name: 'Nalgonda Agri Zone',
+        service_area: 'Telangana & Coastal AP'
+    },
+    {
+        phone: '9876500006',
+        pin: '1234',
+        name: 'Anji Babu (Deccan Agro Haulers)',
+        driver_name: 'Anji Babu',
+        vehicle_number: 'TS 04 XY 7890',
+        vehicle_type: 'Standard Truck',
+        capacity: 18,
+        price_per_km: 48,
+        rating: 4.8,
+        availability: 'AVAILABLE',
+        current_location_name: 'Khammam Rural',
+        service_area: 'Central Telangana'
+    },
+    {
+        phone: '9876500007',
+        pin: '1234',
+        name: 'Prasad Naidu (Khammam Express Logistics)',
+        driver_name: 'Prasad Naidu',
+        vehicle_number: 'AP 20 QR 3344',
+        vehicle_type: 'Multi-Axle Trailer',
+        capacity: 22,
+        price_per_km: 58,
+        rating: 4.95,
+        availability: 'AVAILABLE',
+        current_location_name: 'Bodulabanda Cross',
+        service_area: 'Telangana & Andhra Pradesh'
+    },
+    {
+        phone: '9876500008',
+        pin: '1234',
+        name: 'Naveen Kumar (Godavari Heavy Freight)',
+        driver_name: 'Naveen Kumar',
+        vehicle_number: 'AP 31 KL 9012',
+        vehicle_type: 'Heavy Lorry',
+        capacity: 24,
+        price_per_km: 60,
+        rating: 4.85,
+        availability: 'AVAILABLE',
+        current_location_name: 'Kothagudem Hub',
+        service_area: 'Godavari Basin & Telangana'
+    },
+    {
+        phone: '9876500009',
+        pin: '1234',
+        name: 'Raju Shinde (Kisan Bandhu Mini Express)',
+        driver_name: 'Raju Shinde',
+        vehicle_number: 'TS 15 EF 1234',
+        vehicle_type: 'Mini Truck',
+        capacity: 7,
+        price_per_km: 30,
+        rating: 4.7,
+        availability: 'AVAILABLE',
+        current_location_name: 'Warangal Subedari',
+        service_area: 'Warangal & Surrounding Villages'
+    },
+    {
+        phone: '9876500010',
+        pin: '1234',
+        name: 'Vamshi Krishna (Telangana Grain Movers)',
+        driver_name: 'Vamshi Krishna',
+        vehicle_number: 'TS 03 GH 8899',
+        vehicle_type: 'Standard Truck',
+        capacity: 12,
+        price_per_km: 38,
+        rating: 4.8,
+        availability: 'AVAILABLE',
+        current_location_name: 'Suryapet Mandi',
+        service_area: 'Southern Telangana'
     }
 ];
 
@@ -95,6 +183,26 @@ export function calculateDistance(lat1, lon1, lat2, lon2) {
         Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return Math.round(R * c * 10) / 10;
+}
+
+// Calculate truck capacity range based on selected capacity (e.g. 20 Tons -> 18 to 25 Tons)
+export function getCapacityRange(selectedCapacityTons) {
+    const cap = Number(selectedCapacityTons) || 10;
+    if (cap <= 5) {
+        return { min: 4, max: 8, label: '4 – 8 Tons' };
+    } else if (cap <= 10) {
+        return { min: 8, max: 14, label: '8 – 14 Tons' };
+    } else if (cap <= 15) {
+        return { min: 12, max: 18, label: '12 – 18 Tons' };
+    } else if (cap <= 20) {
+        return { min: 18, max: 25, label: '18 – 25 Tons' }; // 18 to 25 Tons as specified
+    } else if (cap <= 25) {
+        return { min: 22, max: 30, label: '22 – 30 Tons' };
+    } else {
+        const minVal = Math.max(1, Math.round(cap * 0.85));
+        const maxVal = Math.round(cap * 1.3);
+        return { min: minVal, max: maxVal, label: `${minVal} – ${maxVal} Tons` };
+    }
 }
 
 // Generate Unique Permanent Enquiry ID: KC-2026-000123
@@ -198,7 +306,7 @@ class KisanService {
     // ==========================================
     // TRANSPORT PROVIDER DISCOVERY & RATES
     // ==========================================
-    async getAvailableTransporters({ farmerLat, farmerLng, requiredCapacityTons = 0 } = {}) {
+    async getAvailableTransporters({ farmerLat, farmerLng, requiredCapacityTons = 0, minCapacityTons, maxCapacityTons, vehicleType } = {}) {
         let providers = [];
         try {
             const { data, error } = await supabase.from('transport_providers').select('*');
@@ -211,14 +319,18 @@ class KisanService {
 
         const localProviders = getLocal(STORAGE_KEYS.TRANSPORT_PROVIDERS, DEFAULT_PROVIDERS);
         const map = new Map();
-        localProviders.forEach(p => map.set(p.phone, p));
+        // Seed default rich test drivers first
+        DEFAULT_PROVIDERS.forEach(p => map.set(p.phone, p));
+        // Merge stored local providers
+        localProviders.forEach(p => map.set(p.phone, { ...map.get(p.phone), ...p }));
+        // Merge Supabase providers
         providers.forEach(p => map.set(p.phone, { ...map.get(p.phone), ...p }));
         const combined = Array.from(map.values());
 
         const fLat = Number(farmerLat) || 17.0916;
         const fLng = Number(farmerLng) || 80.0210;
 
-        return combined.map(p => {
+        let mapped = combined.map(p => {
             const pLat = Number(p.current_lat) || 17.1000 + (Math.random() * 0.05);
             const pLng = Number(p.current_lng) || 80.0200 + (Math.random() * 0.05);
             const distance = calculateDistance(fLat, fLng, pLat, pLng) || Math.round(15 + Math.random() * 25);
@@ -228,21 +340,37 @@ class KisanService {
             const requiredTons = Number(requiredCapacityTons) || 0;
             const isCapacitySufficient = capacity >= requiredTons;
 
+            const isWithinRange = (minCapacityTons !== undefined && maxCapacityTons !== undefined && minCapacityTons !== null && maxCapacityTons !== null)
+                ? (capacity >= Number(minCapacityTons) && capacity <= Number(maxCapacityTons))
+                : true;
+
             return {
                 ...p,
                 id: p.phone,
-                driver_name: p.name,
+                driver_name: p.driver_name || p.name,
                 vehicle_number: p.vehicle_number || 'TS 09 EA 4421',
-                vehicle_type: p.vehicle_type || 'Truck',
+                vehicle_type: p.vehicle_type || 'Standard Truck',
                 capacity: capacity,
                 price_per_km: ratePerKm,
                 distance: distance,
                 estimated_cost: estimatedCost,
                 is_capacity_sufficient: isCapacitySufficient,
+                is_within_range: isWithinRange,
+                rating: p.rating || 4.8,
                 availability: p.availability || 'AVAILABLE',
                 location_name: p.current_location_name || 'Agri Logistics Hub'
             };
-        }).sort((a, b) => {
+        });
+
+        if (vehicleType && vehicleType !== 'ALL' && vehicleType !== 'All Vehicles') {
+            const lowerType = vehicleType.toLowerCase();
+            mapped = mapped.filter(p => (p.vehicle_type || '').toLowerCase().includes(lowerType));
+        }
+
+        return mapped.sort((a, b) => {
+            if (a.is_within_range !== b.is_within_range) {
+                return a.is_within_range ? -1 : 1;
+            }
             if (a.is_capacity_sufficient !== b.is_capacity_sufficient) {
                 return a.is_capacity_sufficient ? -1 : 1;
             }
@@ -484,10 +612,10 @@ class KisanService {
     // ==========================================
     // DUAL ACCEPTANCE: MILL ACCEPT / REJECT
     // ==========================================
-    async acceptEnquiry(enquiryIdOrCode, millUser) {
+    async acceptEnquiry(enquiryIdOrCode, millUser, extraEnquiryData = null) {
         const acceptedAt = new Date().toISOString();
         const localList = getLocal(STORAGE_KEYS.ENQUIRIES, []);
-        let updatedEnquiry = null;
+        let updatedEnquiry = extraEnquiryData ? { ...extraEnquiryData } : null;
 
         const updatedLocal = localList.map(eq => {
             if (eq.id === enquiryIdOrCode || eq.enquiry_code === enquiryIdOrCode) {
@@ -528,6 +656,9 @@ class KisanService {
         }
 
         if (updatedEnquiry) {
+            // Automatically remove the crop from the farmer's active "My Crops"
+            await this.removeCropAfterAcceptance(updatedEnquiry);
+
             // If overall confirmed, generate QR token record immediately
             if (updatedEnquiry.overall_status === 'CONFIRMED') {
                 this.createQrToken(updatedEnquiry.id, updatedEnquiry.enquiry_code || targetId);
@@ -554,6 +685,51 @@ class KisanService {
 
         this.notify('enquiry_accepted', updatedEnquiry || { id: targetId, status: 'ACCEPTED' });
         return updatedEnquiry || { id: targetId, status: 'ACCEPTED' };
+    }
+
+    // ==========================================
+    // REMOVE CROP ON ACCEPTANCE
+    // ==========================================
+    async removeCropAfterAcceptance(enquiry) {
+        if (!enquiry) return;
+        const cropId = enquiry.crop_id;
+        const farmerPhone = enquiry.farmer_phone;
+        const cropName = enquiry.crop_name;
+        const locationName = enquiry.farmer_location_name || enquiry.pickup_location;
+
+        try {
+            if (cropId) {
+                const { error } = await supabase.from('crops').delete().eq('id', cropId);
+                if (error) console.warn("Supabase crop delete by id notice:", error);
+            }
+            if (farmerPhone && cropName) {
+                let query = supabase.from('crops').delete().eq('user_phone', farmerPhone).eq('crop_name', cropName);
+                if (locationName) {
+                    query = query.eq('location_name', locationName);
+                }
+                const { error } = await query;
+                if (error) console.warn("Supabase crop delete by name/phone notice:", error);
+            }
+        } catch (err) {
+            console.warn("Error deleting crop from Supabase:", err);
+        }
+
+        this.notify('crop_removed', {
+            cropId,
+            farmerPhone,
+            cropName,
+            locationName
+        });
+        this.notify('crops_changed', {
+            cropId,
+            farmerPhone,
+            cropName,
+            locationName
+        });
+    }
+
+    async removeCrop(cropId, farmerPhone, cropName) {
+        return this.removeCropAfterAcceptance({ crop_id: cropId, farmer_phone: farmerPhone, crop_name: cropName });
     }
 
     async rejectEnquiry(enquiryIdOrCode, reason = '') {

@@ -149,12 +149,14 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
                     addedAt: c.added_at
                 }));
                 setCrops(mappedCrops);
+                setSelectedCropForSearch(prev => (prev && !mappedCrops.some(mc => mc.id === prev.id) ? null : prev));
 
                 // Set initial weather location to latest crop
                 const lastCrop = mappedCrops[mappedCrops.length - 1];
                 setSelectedWeatherLocation(lastCrop);
             } else {
                 setCrops([]);
+                setSelectedCropForSearch(null);
                 setSelectedWeatherLocation(null);
             }
         } catch (error) {
@@ -214,9 +216,20 @@ export default function FarmerPortal({ user: propUser, onLogout }) {
         fetchEnquiriesData();
         fetchAllVerifiedMills();
 
-        const unsub = kisanService.subscribe(() => {
+        const unsub = kisanService.subscribe((event, payload) => {
+            fetchCrops();
             fetchEnquiriesData();
             fetchAllVerifiedMills();
+
+            if (event === 'crop_removed' || event === 'crops_changed') {
+                if (payload?.cropId) {
+                    setCrops(prev => prev.filter(c => c.id !== payload.cropId));
+                    setSelectedCropForSearch(prev => (prev?.id === payload.cropId ? null : prev));
+                } else if (payload?.cropName) {
+                    setCrops(prev => prev.filter(c => c.cropName !== payload.cropName || (payload.locationName && c.locationName !== payload.locationName)));
+                    setSelectedCropForSearch(prev => (prev?.cropName === payload.cropName ? null : prev));
+                }
+            }
         });
 
         return () => unsub();

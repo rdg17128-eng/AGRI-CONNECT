@@ -216,7 +216,7 @@ export default function BuyerPortal({ user: propUser, onLogout }) {
                 phone: user.phone,
                 id: mills[0]?.id || user.phone,
                 millName: mills[0]?.millName || 'KisanConnect Mill'
-            });
+            }, enquiry);
 
             if (accepted) {
                 await refreshAllData();
